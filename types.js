@@ -15,7 +15,50 @@
  * @property {boolean} isPlaying - True if playing, false if paused
  * @property {string} [source] - Name of origin source (e.g. 'spotify', 'mic', 'search', 'lastfm')
  * @property {string} [playbackType] - 'track' | 'episode' | 'ad' | 'none'
+ * @property {string} stableId - Same song, same id across sources and sessions:
+ *   'mb:<recording MBID>', else 'isrc:<ISRC>', else 'key:<artist>__<title>' (see stableTrackId)
+ * @property {string} [mbid] - MusicBrainz recording MBID (set by the source or by the library collector)
+ * @property {string} [isrc] - International Standard Recording Code, upper case without dashes
+ * @property {string} [artistMbid] - MusicBrainz artist MBID of the main artist
  */
+
+const MBID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Lower-case MusicBrainz id, or '' when the value isn't a valid MBID. */
+export function normalizeMbid(value) {
+  const s = String(value || '').trim().toLowerCase();
+  return MBID_RE.test(s) ? s : '';
+}
+
+/** Upper-case ISRC without spaces or dashes ("US-RC1-76-07839" -> "USRC17607839"), or ''. */
+export function normalizeIsrc(value) {
+  const s = String(value || '').replace(/[\s-]/g, '').toUpperCase();
+  return /^[A-Z]{2}[A-Z0-9]{3}\d{7}$/.test(s) ? s : '';
+}
+
+/** Loose "artist__title" key that ignores case, punctuation, "(feat. X)" and "(Remastered)" tags. */
+export function trackMatchKey(artist, title) {
+  const norm = (v) => String(v || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s*[([][^)\]]*[)\]]/g, ' ')
+    .replace(/\s+(?:feat\.?|ft\.?|featuring)\s.*$/, '')
+    .replace(/\s+-\s+.*(?:remaster(?:ed)?|version|edit|mix|live)\b.*$/, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+  return `${norm(artist)}__${norm(title)}`;
+}
+
+/** Stable id for a track: MusicBrainz recording first, then ISRC, then the artist + title key. */
+export function stableTrackId(track) {
+  if (!track) return '';
+  const mbid = normalizeMbid(track.mbid);
+  if (mbid) return `mb:${mbid}`;
+  const isrc = normalizeIsrc(track.isrc);
+  if (isrc) return `isrc:${isrc}`;
+  return `key:${trackMatchKey(track.artist || track.artists, track.title)}`;
+}
 
 /**
  * Validates and normalizes an object to ensure it conforms to the NowPlaying interface.
@@ -94,6 +137,13 @@ export function normalizeNowPlaying(data) {
   if (data.lrclibId) {
     res.lrclibId = data.lrclibId;
   }
+  const mbid = normalizeMbid(data.mbid || data.recordingMbid);
+  if (mbid) res.mbid = mbid;
+  const isrc = normalizeIsrc(data.isrc);
+  if (isrc) res.isrc = isrc;
+  const artistMbid = normalizeMbid(data.artistMbid);
+  if (artistMbid) res.artistMbid = artistMbid;
+  res.stableId = stableTrackId(res);
 
   return res;
 }

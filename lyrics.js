@@ -7,6 +7,8 @@
  * and manages user offset calibration.
  */
 
+import { openAppDB, LYRICS_STORE } from './db.js';
+
 const LRCLIB_GET_URL = 'https://lrclib.net/api/get';
 const LRCLIB_SEARCH_URL = 'https://lrclib.net/api/search';
 const LRCLIB_HEADERS = {
@@ -17,35 +19,13 @@ const STORAGE_CACHE_PREFIX = 'lyricwave_lrc_';
 
 // 30 days expiry in milliseconds (30 * 24 * 60 * 60 * 1000)
 const IDB_CACHE_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
-const DB_NAME = 'LyricWaveDB';
-const DB_VERSION = 1;
-const STORE_NAME = 'lyrics';
+const STORE_NAME = LYRICS_STORE;
 
 /**
- * Open or upgrade LyricWave IndexedDB instance
+ * Open LyricWaveDB (shared with the Library, see db.js)
  */
 function openLyricsDB() {
-  if (typeof indexedDB === 'undefined') return Promise.resolve(null);
-  return new Promise((resolve) => {
-    try {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
-      request.onupgradeneeded = (e) => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME, { keyPath: 'key' });
-        }
-      };
-      request.onsuccess = () => {
-        const db = request.result;
-        // Let "Clear All Data" (deleteDatabase) proceed instead of being blocked.
-        db.onversionchange = () => db.close();
-        resolve(db);
-      };
-      request.onerror = () => resolve(null);
-    } catch {
-      resolve(null);
-    }
-  });
+  return openAppDB();
 }
 
 /**

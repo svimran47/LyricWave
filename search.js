@@ -176,7 +176,10 @@ export class SearchSource {
       source: track.source || 'search',
       syncedLyrics: track.syncedLyrics || null,
       plainLyrics: track.plainLyrics || null,
-      lrclibId: track.lrclibId || null
+      lrclibId: track.lrclibId || null,
+      // Stable ids (Library rows, Spotify-derived lookups) so the same song keeps the same stableId.
+      mbid: track.mbid || null,
+      isrc: track.isrc || null
     };
 
     this.onTrackChange(this.currentTrack);

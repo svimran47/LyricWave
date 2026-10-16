@@ -7,7 +7,7 @@
   "scripts": {
     "start": "electron desktop/main.cjs",
     "build": "echo Static site ready",
-    "test": "node test-architecture.js && node test-lyrics.js && node test-mic.js && node test-providers.js && node test-shazam.js && node test-reel.js && node test-sources.js && node test-regressions.js && node test-phone.js && node test-audio-reactive.js && node test-visuals.js && node test-translate.js && node test-android-assets.js",
+    "test": "node test-architecture.js && node test-lyrics.js && node test-mic.js && node test-providers.js && node test-shazam.js && node test-reel.js && node test-sources.js && node test-regressions.js && node test-phone.js && node test-audio-reactive.js && node test-visuals.js && node test-card.js && node test-translate.js && node test-android-assets.js",
     "test:e2e": "playwright test",
     "dev": "wrangler pages dev . --ip 127.0.0.1 --port 8788 --compatibility-date=2026-10-06",
     "deploy": "wrangler pages deploy . --project-name lyricwave --branch main",

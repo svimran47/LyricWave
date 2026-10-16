@@ -42,7 +42,13 @@ LyricWave features a source-agnostic architecture coordinating 4 input methods:
    - Three visual themes: **Pixel OLED** (Monochrome), **Neon**, and **Minimal**.
    - Respects `prefers-reduced-motion` and supports full-screen presentation mode.
 
-8. **📱 Progressive Web App (PWA)**:
+8. **🖼️ Lyrics Card Maker**:
+   - Pick 1–4 consecutive lines of the current song (it starts on the line playing now) from **More → Lyrics card** or the `C` key.
+   - Four styles (**Spotlight** highlighted lines on the blurred cover, **Aurora**, **Paper**, **Neon**) in **Square** (1080×1080) or **Story** (1080×1920).
+   - Shares through the system share sheet where the browser supports it, or downloads a PNG. Every card credits the song title and artist.
+   - Cards quote short excerpts only (4 lines / 220 characters), since lyrics stay their songwriters' copyright.
+
+9. **📱 Progressive Web App (PWA)**:
    - Installable on iOS, Android, macOS, and Windows.
    - Offline shell caching with service worker fallback and cache management.
 

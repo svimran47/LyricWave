@@ -36,6 +36,17 @@
 
         </activity>
 
+        <!-- Shares lyrics-card images from the cache dir (res/xml/file_paths.xml) with other apps. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <!-- Lets LyricWave see which music app is playing (media sessions). Notification
              contents are never read; see MediaListenerService. -->
         <service

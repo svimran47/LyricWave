@@ -31,6 +31,7 @@ import { AudioReactive } from './audio-reactive.js';
 import { translateLyrics, defaultTargetLang, TRANSLATE_LANGUAGES, TranslationQuotaError } from './translate.js';
 import { BeatVisuals } from './visuals.js';
 import { ProjectMVisualizer, isProjectMSupported } from './projectm-visualizer.js';
+import { LyricCardMaker } from './card.js';
 import { signUp, logIn, logOut, getCurrentUser, updateUserPreferences, deleteCurrentAccount } from './user-auth.js';
 
 // DOM Elements: Navigation Tabs
@@ -195,6 +196,8 @@ const btnSeekForward = document.getElementById('btnSeekForward');
 const btnResync = document.getElementById('btnResync');
 const btnListenAgain = document.getElementById('btnListenAgain');
 const btnShareSong = document.getElementById('btnShareSong');
+const btnMakeLyricCard = document.getElementById('btnMakeLyricCard');
+const lyricCardBackdrop = document.getElementById('lyricCardBackdrop');
 const firstRunHint = document.getElementById('firstRunHint');
 const btnDismissFirstRun = document.getElementById('btnDismissFirstRun');
 const progressTrack = document.getElementById('progressTrack');
@@ -3468,6 +3471,29 @@ btnMoreOpenSettings?.addEventListener('click', () => {
   closeMoreSheet({ restoreFocus: false });
   openSettings();
 });
+
+// Lyrics card maker: pick a few lines of the current song and export them as an image
+const lyricCard = lyricCardBackdrop ? new LyricCardMaker({
+  backdrop: lyricCardBackdrop,
+  notify: (msg, type) => showAlert(msg, type),
+  haptic,
+  onClose: () => { if (stageOpen) btnMoreSheet?.focus({ preventScroll: true }); }
+}) : null;
+
+function openLyricCard() {
+  if (!lyricCard) return;
+  const positionMs = engine.track ? engine.getEffectivePositionMs() : NaN;
+  lyricCard.open(engine.track, engine.lyricsData, positionMs);
+}
+
+btnMakeLyricCard?.addEventListener('click', () => {
+  closeMoreSheet({ restoreFocus: false });
+  openLyricCard();
+});
+
+lyricCardBackdrop?.addEventListener('keydown', (e) => {
+  if (e.key === 'Tab') trapFocus(lyricCardBackdrop, e);
+});
 if (btnCloseShortcuts) btnCloseShortcuts.addEventListener('click', closeShortcuts);
 if (btnDoneShortcuts) btnDoneShortcuts.addEventListener('click', closeShortcuts);
 if (shortcutsBackdrop) {
@@ -3548,51 +3574,95 @@ if (settingsDialog) {
   });
 }
 
+const isShown = (el) => Boolean(el && !el.classList.contains('hidden'));
+
+/**
+ * True while a dialog or sheet covers the app. Global shortcuts (play, seek, sync, font size...)
+ * stay off then, so keys typed in a dialog never act on the song behind it.
+ * @param {{ ignoreSheet?: boolean }} [opts]
+ */
+function isOverlayOpen({ ignoreSheet = false } = {}) {
+  return (!ignoreSheet && sheetOpen)
+    || isShown(settingsBackdrop)
+    || isShown(shortcutsBackdrop)
+    || Boolean(lyricCard?.isOpen)
+    || isShown(micConsentBackdrop)
+    || isShown(document.getElementById('authBackdrop'));
+}
+
+/**
+ * Shortcut that toggles one dialog: closes it when open; opens it from the app or the More sheet
+ * (closing the sheet, like its buttons do); does nothing while a different dialog is up.
+ */
+function toggleDialogShortcut(isOpenNow, open, close) {
+  if (isOpenNow) { close(); return; }
+  if (isOverlayOpen({ ignoreSheet: true })) return;
+  if (sheetOpen) closeMoreSheet({ restoreFocus: false });
+  open();
+}
+
 // Desktop Keyboard Shortcuts & Navigation
 window.addEventListener('keydown', (e) => {
   // If user is currently focused on an editable input/textarea/select, don't trigger global hotkeys
   const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
   const isInputActive = activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select' || document.activeElement?.isContentEditable;
+  const plainKey = !e.ctrlKey && !e.metaKey && !e.altKey;
 
-  // Escape to close any open dialogs or exit fullscreen
+  // Escape closes the topmost layer: a dialog, then the More sheet, then fullscreen, then the stage.
+  // (The account dialog handles its own Escape and stops it before it gets here.)
   if (e.key === 'Escape') {
-    if (!settingsBackdrop.classList.contains('hidden')) {
+    if (isShown(settingsBackdrop)) {
       closeSettings();
-      return;
-    }
-    if (shortcutsBackdrop && !shortcutsBackdrop.classList.contains('hidden')) {
+    } else if (isShown(shortcutsBackdrop)) {
       closeShortcuts();
-      return;
-    }
-    if (micConsentBackdrop && !micConsentBackdrop.classList.contains('hidden')) {
+    } else if (lyricCard?.isOpen) {
+      lyricCard.close();
+    } else if (isShown(micConsentBackdrop)) {
       micConsentBackdrop.classList.add('hidden');
-      return;
-    }
-    if (sheetOpen) {
+    } else if (sheetOpen) {
       closeMoreSheet();
-      return;
-    }
-    if (isReelFullscreen()) {
+    } else if (isReelFullscreen()) {
       toggleFullscreen();
-      return;
-    }
-    // Escape collapses the stage to the mini player.
-    if (stageOpen) {
+    } else if (stageOpen) {
       closeStage({ userInitiated: true });
+    } else {
       return;
     }
+    e.preventDefault();
+    return;
   }
 
   if (isInputActive) return;
   if (e.defaultPrevented) return; // a focused control (e.g. the seek slider) already handled this key
 
+  // Dialog toggles: each closes its own dialog, and opens it unless a different dialog is up.
+  // 'S': Settings
+  if ((e.key === 's' || e.key === 'S') && plainKey) {
+    e.preventDefault();
+    toggleDialogShortcut(isShown(settingsBackdrop), openSettings, closeSettings);
+    return;
+  }
+
+  // 'C': Lyrics card maker for the current song
+  if ((e.key === 'c' || e.key === 'C') && plainKey) {
+    e.preventDefault();
+    toggleDialogShortcut(Boolean(lyricCard?.isOpen), openLyricCard, () => lyricCard?.close());
+    return;
+  }
+
+  // '?' (Shift + '/'): keyboard shortcuts cheat-sheet
+  if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
+    e.preventDefault();
+    toggleDialogShortcut(isShown(shortcutsBackdrop), openShortcuts, closeShortcuts);
+    return;
+  }
+
+  // Everything below acts on the song, so it stays off while a dialog or the More sheet is open
+  // (Space then keeps its native meaning: press the focused button).
+  if (isOverlayOpen()) return;
+
   // 'Space': play / pause on the stage; otherwise toggle microphone listening (or play/pause a search track)
-  if (e.code === 'Space' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-    const overlayOpen = sheetOpen
-      || !settingsBackdrop.classList.contains('hidden')
-      || (shortcutsBackdrop && !shortcutsBackdrop.classList.contains('hidden'))
-      || (micConsentBackdrop && !micConsentBackdrop.classList.contains('hidden'));
-    if (overlayOpen) return;
+  if (e.code === 'Space' && plainKey) {
     // On the stage, real controls keep their native Space behaviour (except the collapse button, which has
     // focus right after the stage opens); elsewhere Space keeps meaning "listen" as before.
     if (stageOpen) {
@@ -3612,38 +3682,16 @@ window.addEventListener('keydown', (e) => {
   }
 
   // 'F' or 'f': Fullscreen reel mode toggle
-  if ((e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+  if ((e.key === 'f' || e.key === 'F') && plainKey) {
     e.preventDefault();
     toggleFullscreen();
     return;
   }
 
   // 'N' or 'n': next projectM preset while it runs fullscreen
-  if ((e.key === 'n' || e.key === 'N') && !e.ctrlKey && !e.metaKey && !e.altKey && projectm?.active && projectm.ready) {
+  if ((e.key === 'n' || e.key === 'N') && plainKey && projectm?.active && projectm.ready) {
     e.preventDefault();
     projectm.nextPreset(true);
-    return;
-  }
-
-  // 'S' or 's': Settings dialog toggle
-  if ((e.key === 's' || e.key === 'S') && !e.ctrlKey && !e.metaKey && !e.altKey) {
-    e.preventDefault();
-    if (settingsBackdrop.classList.contains('hidden')) {
-      openSettings();
-    } else {
-      closeSettings();
-    }
-    return;
-  }
-
-  // '?' or '/': Open keyboard shortcuts cheat-sheet
-  if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
-    e.preventDefault();
-    if (shortcutsBackdrop.classList.contains('hidden')) {
-      openShortcuts();
-    } else {
-      closeShortcuts();
-    }
     return;
   }
 

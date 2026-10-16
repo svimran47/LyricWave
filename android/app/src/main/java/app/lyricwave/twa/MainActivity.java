@@ -3,7 +3,10 @@ package app.lyricwave.twa;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.ActivityNotFoundException;
+import android.content.ClipData;
 import android.content.ComponentName;
+import android.content.ContentResolver;
+import android.content.ContentValues;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -12,7 +15,9 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Looper;
+import android.provider.MediaStore;
 import android.provider.Settings;
+import android.util.Base64;
 import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.ViewGroup;
@@ -36,6 +41,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.browser.customtabs.CustomTabsIntent;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
@@ -43,6 +49,11 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.webkit.WebViewAssetLoader;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -412,6 +423,95 @@ public class MainActivity extends AppCompatActivity {
         controller.setAppearanceLightNavigationBars(lightBackground);
     }
 
+    // ---------------------------------------------------------------------------------------
+    // Lyrics-card share / save (the WebView has no Web Share API and ignores blob downloads)
+    // ---------------------------------------------------------------------------------------
+
+    /** Largest card image the bridge accepts (a 1080x1920 PNG is a few MB). */
+    static final int MAX_CARD_BYTES = 12 * 1024 * 1024;
+    private static final String CARD_DIR = "cards";
+
+    /**
+     * "lyricwave-artist-song.png" style name: lowercase [a-z0-9-], at most 80 chars, always ".png".
+     * Pure Java; never lets a path separator or ".." through.
+     */
+    static String safeCardFileName(String name) {
+        String base = name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
+        if (base.endsWith(".png")) base = base.substring(0, base.length() - 4);
+        base = base.replaceAll("[^a-z0-9]+", "-").replaceAll("^-+|-+$", "");
+        if (base.length() > 80) base = base.substring(0, 80).replaceAll("-+$", "");
+        return (base.isEmpty() ? "lyricwave-card" : base) + ".png";
+    }
+
+    /** True when the bytes start with the 8-byte PNG signature. */
+    static boolean isPng(byte[] bytes) {
+        if (bytes == null || bytes.length < 8) return false;
+        int[] sig = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+        for (int i = 0; i < 8; i++) {
+            if ((bytes[i] & 0xFF) != sig[i]) return false;
+        }
+        return true;
+    }
+
+    /** Decodes a base64 PNG (a "data:image/png;base64," prefix is allowed). Null if not a sane PNG. */
+    private static byte[] decodeCardPng(String base64) {
+        if (base64 == null) return null;
+        String data = base64;
+        int comma = data.indexOf(',');
+        if (data.startsWith("data:") && comma > 0) data = data.substring(comma + 1);
+        // base64 is 4/3 the size of the bytes; refuse oversized input before allocating
+        if (data.isEmpty() || data.length() > MAX_CARD_BYTES / 3 * 4 + 4) return null;
+        byte[] bytes;
+        try {
+            bytes = Base64.decode(data, Base64.DEFAULT);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+        return isPng(bytes) ? bytes : null;
+    }
+
+    /** Writes the card into cache/cards/ (replacing older cards) and returns a content:// URI. */
+    private Uri writeCardToCache(byte[] png, String fileName) throws IOException {
+        File dir = new File(getCacheDir(), CARD_DIR);
+        if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("Could not create " + dir);
+        File[] old = dir.listFiles();
+        if (old != null) {
+            for (File f : old) {
+                //noinspection ResultOfMethodCallIgnored
+                f.delete();
+            }
+        }
+        File out = new File(dir, fileName);
+        try (FileOutputStream fos = new FileOutputStream(out)) {
+            fos.write(png);
+        }
+        return FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", out);
+    }
+
+    /** Android 10+: saves into Pictures/LyricWave through MediaStore (no storage permission needed). */
+    @RequiresApi(api = Build.VERSION_CODES.Q)
+    private boolean saveCardToGallery(byte[] png, String fileName) {
+        ContentResolver resolver = getContentResolver();
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.Images.Media.DISPLAY_NAME, fileName);
+        values.put(MediaStore.Images.Media.MIME_TYPE, "image/png");
+        values.put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/LyricWave");
+        values.put(MediaStore.Images.Media.IS_PENDING, 1);
+        Uri item = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+        if (item == null) return false;
+        try (OutputStream os = resolver.openOutputStream(item)) {
+            if (os == null) throw new IOException("No output stream");
+            os.write(png);
+        } catch (IOException | RuntimeException e) {
+            resolver.delete(item, null, null);
+            return false;
+        }
+        values.clear();
+        values.put(MediaStore.Images.Media.IS_PENDING, 0);
+        resolver.update(item, values, null, null);
+        return true;
+    }
+
     /** Tells the page about an update check; status is one of the WebUpdater.STATUS_* values. */
     private void pushWebUpdateStatus(String status, boolean manual) {
         runOnUiThread(() -> {
@@ -606,6 +706,66 @@ public class MainActivity extends AppCompatActivity {
                 webView.clearCache(false);
                 webView.loadUrl(APP_START_URL);
             });
+        }
+
+        /**
+         * Opens the system share sheet for a lyrics-card PNG (base64). Returns false when the image
+         * is invalid or could not be written, so the page can fall back. Decoding and the file write
+         * run on the bridge thread; only the chooser launch hops to the UI thread.
+         */
+        @JavascriptInterface
+        public boolean shareImage(final String base64Png, final String fileName, final String title) {
+            if (destroyed) return false;
+            final byte[] png = decodeCardPng(base64Png);
+            if (png == null) return false;
+            final Uri uri;
+            try {
+                uri = writeCardToCache(png, safeCardFileName(fileName));
+            } catch (IOException | RuntimeException e) {
+                return false;
+            }
+            final String text = title == null ? "" : title.trim();
+            runOnUiThread(() -> {
+                if (destroyed) return;
+                Intent send = new Intent(Intent.ACTION_SEND)
+                        .setType("image/png")
+                        .putExtra(Intent.EXTRA_STREAM, uri)
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                // ClipData carries the read grant through the chooser to the picked app
+                send.setClipData(ClipData.newRawUri(text, uri));
+                if (!text.isEmpty()) {
+                    send.putExtra(Intent.EXTRA_TITLE, text);
+                    send.putExtra(Intent.EXTRA_TEXT, text);
+                }
+                try {
+                    startActivity(Intent.createChooser(send, null));
+                } catch (ActivityNotFoundException ignored) {
+                    // No app can receive images; nothing else to try.
+                }
+            });
+            return true;
+        }
+
+        /**
+         * Saves a lyrics-card PNG (base64) to Pictures/LyricWave. Android 10+ only (MediaStore, no
+         * permission); returns false on older versions or on failure so the page can offer Share.
+         */
+        @JavascriptInterface
+        public boolean saveImage(final String base64Png, final String fileName) {
+            if (destroyed || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false;
+            final byte[] png = decodeCardPng(base64Png);
+            if (png == null) return false;
+            try {
+                return saveCardToGallery(png, safeCardFileName(fileName));
+            } catch (RuntimeException e) {
+                return false;
+            }
+        }
+
+        /** True when saveImage() can work on this Android version. */
+        @JavascriptInterface
+        public boolean canSaveImage() {
+            return Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q;
         }
 
         /** hex: "#RGB" or "#RRGGBB". Ignored if malformed. */

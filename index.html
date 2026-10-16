@@ -845,6 +845,11 @@
             <svg class="icon icon--sm" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-share"/></svg>
             <span class="sheet-row-label">Share</span>
           </button>
+          <button id="btnMakeLyricCard" class="sheet-row" type="button" aria-label="Make a lyrics card" title="Make a lyrics card (C)">
+            <svg class="icon icon--sm" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-sparkles"/></svg>
+            <span class="sheet-row-label">Lyrics card</span>
+            <span class="sheet-row-hint">Turn a line into an image to share</span>
+          </button>
           <button id="btnResync" class="sheet-row btn-resync hidden" type="button" aria-label="Re-sync room audio" title="Re-sync room audio (detect song or correct drift)">
             <svg class="icon icon--sm" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-refresh"/></svg>
             <span class="sheet-row-label btn-resync-label">Re-sync</span>
@@ -1281,6 +1286,10 @@
             <kbd class="shortcut-key">]</kbd>
           </div>
           <div class="shortcut-row">
+            <span class="shortcut-action">Make a Lyrics Card</span>
+            <kbd class="shortcut-key">C</kbd>
+          </div>
+          <div class="shortcut-row">
             <span class="shortcut-action">Show Keyboard Shortcuts</span>
             <kbd class="shortcut-key">?</kbd>
           </div>
@@ -1294,6 +1303,57 @@
       <div class="modal-footer">
         <button id="btnDoneShortcuts" class="btn btn-settings-done" type="button">
           Got it
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================
+       LYRICS CARD MAKER MODAL (C)
+       =================================================================== -->
+  <div id="lyricCardBackdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="lyricCardTitle" aria-hidden="true">
+    <div class="modal-dialog lyric-card-dialog">
+      <div class="modal-header">
+        <div class="modal-header-meta">
+          <h3 id="lyricCardTitle" class="modal-title">
+            <svg class="icon" width="24" height="24" aria-hidden="true" focusable="false"><use href="#i-sparkles"/></svg>
+            <span>Lyrics card</span>
+          </h3>
+          <p id="lyricCardSubtitle" class="modal-subtitle"></p>
+        </div>
+        <button id="btnCloseLyricCard" class="btn-close-modal" type="button" aria-label="Close lyrics card"><svg class="icon" width="24" height="24" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
+      </div>
+
+      <div class="modal-body lyric-card-body">
+        <div class="lyric-card-preview">
+          <canvas id="lyricCardCanvas" class="lyric-card-canvas" width="1080" height="1080" role="img" aria-label="Lyrics card preview"></canvas>
+        </div>
+        <div class="lyric-card-controls">
+          <section class="lyric-card-section" aria-labelledby="lyricCardLinesTitle">
+            <h4 id="lyricCardLinesTitle" class="lyric-card-label">Lines</h4>
+            <p id="lyricCardHint" class="lyric-card-hint" role="status" aria-live="polite"></p>
+            <div id="lyricCardLines" class="lyric-card-lines" role="group" aria-labelledby="lyricCardLinesTitle"></div>
+          </section>
+          <section class="lyric-card-section" aria-labelledby="lyricCardStyleTitle">
+            <h4 id="lyricCardStyleTitle" class="lyric-card-label">Style</h4>
+            <div id="lyricCardStyles" class="anim-style-options" role="radiogroup" aria-labelledby="lyricCardStyleTitle"></div>
+          </section>
+          <section class="lyric-card-section" aria-labelledby="lyricCardFormatTitle">
+            <h4 id="lyricCardFormatTitle" class="lyric-card-label">Size</h4>
+            <div id="lyricCardFormats" class="anim-style-options" role="radiogroup" aria-labelledby="lyricCardFormatTitle"></div>
+          </section>
+          <p class="lyric-card-note">Cards quote a few lines and always credit the song and artist.</p>
+        </div>
+      </div>
+
+      <div class="modal-footer btn-row">
+        <button id="btnLyricCardDownload" class="btn btn-ghost" type="button">
+          <svg class="icon icon--sm" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-download"/></svg>
+          <span>Download</span>
+        </button>
+        <button id="btnLyricCardShare" class="btn btn-primary" type="button">
+          <svg class="icon icon--sm" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-share"/></svg>
+          <span>Share</span>
         </button>
       </div>
     </div>

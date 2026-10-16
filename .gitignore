@@ -31,8 +31,12 @@ app-release-*
 *.apk
 .bubblewrap/
 android-project/
-dist-android/
+# Desktop & Electron
+dist-desktop/
 
-
+# Android Local & Gradle Cache
+android/.gradle/
+android/local.properties
+android/**/build/
 # In-app web update signing key (keep only in GitHub secrets / password manager)
 web-update-private.pem
