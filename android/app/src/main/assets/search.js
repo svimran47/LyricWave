@@ -137,6 +137,9 @@ export class SearchSource {
     this.onPlaybackUpdate = options.onPlaybackUpdate || (() => {});
     this.onIdle = options.onIdle || (() => {});
     this.onError = options.onError || (() => {});
+    // Called when a song's audio finishes (or an open track's audio can't be played), so a
+    // play queue can move on: onEnded({ failed: boolean, track })
+    this.onEnded = options.onEnded || (() => {});
 
     this.currentTrack = null;
     this.isPlaying = false;
@@ -176,7 +179,12 @@ export class SearchSource {
       source: track.source || 'search',
       syncedLyrics: track.syncedLyrics || null,
       plainLyrics: track.plainLyrics || null,
-      lrclibId: track.lrclibId || null
+      lrclibId: track.lrclibId || null,
+      // Stable ids (Library rows, Spotify-derived lookups) so the same song keeps the same stableId.
+      mbid: track.mbid || null,
+      isrc: track.isrc || null,
+      // Openly licensed track (Openverse): previewUrl is the full song and its credit must stay attached.
+      openTrack: track.openTrack || null
     };
 
     this.onTrackChange(this.currentTrack);
@@ -185,10 +193,11 @@ export class SearchSource {
     // taken from somewhere in the middle of the song, so they can't drive a lyric clock that
     // starts at 0:00 — letting them do so showed the wrong lyrics and cut songs off at 30s.
     // By default lyrics run on the full-length clock instead.
+    // Open tracks are the exception: their audio is the whole song, so it drives the clock.
     if (track.playPreview === true && typeof Audio !== 'undefined') {
       if (track.previewUrl) {
         this.initAudio(track.previewUrl, autoStart);
-      } else if (track.title && track.artist) {
+      } else if (track.title && track.artist && !track.openTrack) {
         // Asynchronously discover preview URL if not yet resolved
         const selectedId = this.currentTrack.id;
         this.discoverPreviewUrl(track.artist, track.title).then(purl => {
@@ -265,11 +274,13 @@ export class SearchSource {
           this.currentTrack.position = 0;
           this.onPlaybackUpdate(this.currentTrack);
         }
+        this.onEnded({ failed: false, track: this.currentTrack });
       };
 
       this.audio.onerror = async (e) => {
         console.warn('Audio preview playback error, attempting fallback stream:', e);
-        if (this.currentTrack && !this.currentTrack._triedFallback && this.currentTrack.title && this.currentTrack.artist) {
+        // Never swap an open track for a store preview of a same-named song.
+        if (this.currentTrack && !this.currentTrack.openTrack && !this.currentTrack._triedFallback && this.currentTrack.title && this.currentTrack.artist) {
           this.currentTrack._triedFallback = true;
           try {
             const fallbackUrl = await this.discoverPreviewUrl(this.currentTrack.artist, this.currentTrack.title);
@@ -280,6 +291,14 @@ export class SearchSource {
               return;
             }
           } catch {}
+        }
+        // An open track's audio file is the song itself: if it can't load, say so instead of
+        // running the lyrics on a silent clock, and let a play queue skip it.
+        if (this.currentTrack?.openTrack) {
+          this.pause();
+          this.onError('This song couldn’t be played from its host right now.');
+          this.onEnded({ failed: true, track: this.currentTrack });
+          return;
         }
         if (this.isPlaying) {
           this.startClock();

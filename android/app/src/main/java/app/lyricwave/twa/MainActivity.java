@@ -25,6 +25,7 @@ import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
 import android.webkit.RenderProcessGoneDetail;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -35,6 +36,8 @@ import android.webkit.WebViewClient;
 import androidx.activity.EdgeToEdge;
 import androidx.activity.OnBackPressedCallback;
 import androidx.activity.SystemBarStyle;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
@@ -85,6 +88,16 @@ public class MainActivity extends AppCompatActivity {
 
     /** Downloads signed web bundles so UI changes don't need a new APK (see WebUpdater). */
     private WebUpdater webUpdater;
+
+    /** Pending <input type="file"> request from the page (library restore). UI thread only. */
+    private ValueCallback<Uri[]> fileChooserCallback;
+    private final ActivityResultLauncher<Intent> fileChooserLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(), result -> {
+                ValueCallback<Uri[]> callback = fileChooserCallback;
+                fileChooserCallback = null;
+                if (callback == null) return;
+                callback.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result.getResultCode(), result.getData()));
+            });
 
     /** True only for the bundled app origin served by WebViewAssetLoader. */
     static boolean isAppHost(String host) {
@@ -262,6 +275,30 @@ public class MainActivity extends AppCompatActivity {
                     pendingAudioPermissionRequest = null;
                 }
             }
+
+            /** <input type="file"> (restoring a library backup): opens the system file picker. */
+            @Override
+            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
+                // Only the bundled app origin may open the picker, as with the microphone above
+                String pageUrl = view.getUrl();
+                if (pageUrl == null || !isAppHost(Uri.parse(pageUrl).getHost())) return false;
+                if (fileChooserCallback != null) fileChooserCallback.onReceiveValue(null);
+                fileChooserCallback = callback;
+                try {
+                    Intent pick = params.createIntent();
+                    pick.addCategory(Intent.CATEGORY_OPENABLE);
+                    if (acceptsJson(params.getAcceptTypes())) {
+                        // createIntent() keeps only the first accept type; list the labels JSON files get
+                        pick.setType("*/*");
+                        pick.putExtra(Intent.EXTRA_MIME_TYPES, JSON_PICKER_TYPES.clone());
+                    }
+                    fileChooserLauncher.launch(pick);
+                    return true;
+                } catch (ActivityNotFoundException | IllegalStateException e) {
+                    fileChooserCallback = null;
+                    return false;
+                }
+            }
         });
 
         // Register modern OnBackPressedCallback
@@ -430,6 +467,51 @@ public class MainActivity extends AppCompatActivity {
     /** Largest card image the bridge accepts (a 1080x1920 PNG is a few MB). */
     static final int MAX_CARD_BYTES = 12 * 1024 * 1024;
     private static final String CARD_DIR = "cards";
+    /** Library backups (JSON) the page saves or shares; see saveFile / shareFile. */
+    static final int MAX_EXPORT_BYTES = 16 * 1024 * 1024;
+    private static final String EXPORT_DIR = "exports";
+    static final String EXPORT_MIME = "application/json";
+    /** What the restore picker lists: other apps often store .json files as text/plain or octet-stream. */
+    private static final String[] JSON_PICKER_TYPES = {EXPORT_MIME, "text/plain", "application/octet-stream"};
+
+    /** True when an <input type="file"> accept list asks for JSON (".json" or application/json). */
+    static boolean acceptsJson(String[] acceptTypes) {
+        if (acceptTypes == null) return false;
+        for (String entry : acceptTypes) {
+            if (entry == null) continue;
+            // Some WebView versions pass the whole accept attribute as one comma-separated entry
+            for (String type : entry.split(",")) {
+                String t = type.trim().toLowerCase(Locale.ROOT);
+                if (t.equals(".json") || t.equals(EXPORT_MIME)) return true;
+            }
+        }
+        return false;
+    }
+
+    /** "lyricwave-library-2026-10-17.json" style name: lower-case [a-z0-9-] plus .json. */
+    static String safeExportFileName(String name) {
+        String base = name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
+        if (base.endsWith(".json")) base = base.substring(0, base.length() - 5);
+        base = base.replaceAll("[^a-z0-9]+", "-").replaceAll("^-+|-+$", "");
+        if (base.length() > 80) base = base.substring(0, 80).replaceAll("-+$", "");
+        return (base.isEmpty() ? "lyricwave-library" : base) + ".json";
+    }
+
+    /** Decodes a base64 JSON export. Null unless it is a sane size and starts like a JSON object. */
+    static byte[] decodeExportJson(String base64) {
+        if (base64 == null || base64.isEmpty() || base64.length() > MAX_EXPORT_BYTES / 3 * 4 + 4) return null;
+        byte[] bytes;
+        try {
+            bytes = Base64.decode(base64, Base64.DEFAULT);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+        int i = 0;
+        // Skip a UTF-8 BOM and leading whitespace
+        if (bytes.length >= 3 && (bytes[0] & 0xFF) == 0xEF && (bytes[1] & 0xFF) == 0xBB && (bytes[2] & 0xFF) == 0xBF) i = 3;
+        while (i < bytes.length && (bytes[i] == ' ' || bytes[i] == '\n' || bytes[i] == '\r' || bytes[i] == '\t')) i++;
+        return i < bytes.length && bytes[i] == '{' ? bytes : null;
+    }
 
     /**
      * "lyricwave-artist-song.png" style name: lowercase [a-z0-9-], at most 80 chars, always ".png".
@@ -486,6 +568,48 @@ public class MainActivity extends AppCompatActivity {
             fos.write(png);
         }
         return FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", out);
+    }
+
+    /** Writes a backup into cache/exports/ (replacing older ones) and returns a content:// URI. */
+    private Uri writeExportToCache(byte[] json, String fileName) throws IOException {
+        File dir = new File(getCacheDir(), EXPORT_DIR);
+        if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("Could not create " + dir);
+        File[] old = dir.listFiles();
+        if (old != null) {
+            for (File f : old) {
+                //noinspection ResultOfMethodCallIgnored
+                f.delete();
+            }
+        }
+        File out = new File(dir, fileName);
+        try (FileOutputStream fos = new FileOutputStream(out)) {
+            fos.write(json);
+        }
+        return FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", out);
+    }
+
+    /** Android 10+: saves into Download/LyricWave through MediaStore (no storage permission needed). */
+    @RequiresApi(api = Build.VERSION_CODES.Q)
+    private boolean saveExportToDownloads(byte[] json, String fileName) {
+        ContentResolver resolver = getContentResolver();
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.Downloads.DISPLAY_NAME, fileName);
+        values.put(MediaStore.Downloads.MIME_TYPE, EXPORT_MIME);
+        values.put(MediaStore.Downloads.RELATIVE_PATH, "Download/LyricWave");
+        values.put(MediaStore.Downloads.IS_PENDING, 1);
+        Uri item = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+        if (item == null) return false;
+        try (OutputStream os = resolver.openOutputStream(item)) {
+            if (os == null) throw new IOException("No output stream");
+            os.write(json);
+        } catch (IOException | RuntimeException e) {
+            resolver.delete(item, null, null);
+            return false;
+        }
+        values.clear();
+        values.put(MediaStore.Downloads.IS_PENDING, 0);
+        resolver.update(item, values, null, null);
+        return true;
     }
 
     /** Android 10+: saves into Pictures/LyricWave through MediaStore (no storage permission needed). */
@@ -766,6 +890,58 @@ public class MainActivity extends AppCompatActivity {
         @JavascriptInterface
         public boolean canSaveImage() {
             return Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q;
+        }
+
+        /**
+         * Saves a library backup (base64 JSON) to Download/LyricWave. Android 10+ only (MediaStore,
+         * no permission); returns false otherwise so the page can offer shareFile instead.
+         */
+        @JavascriptInterface
+        public boolean saveFile(final String base64Json, final String fileName) {
+            if (destroyed || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false;
+            final byte[] json = decodeExportJson(base64Json);
+            if (json == null) return false;
+            try {
+                return saveExportToDownloads(json, safeExportFileName(fileName));
+            } catch (RuntimeException e) {
+                return false;
+            }
+        }
+
+        /** True when saveFile() can work on this Android version. */
+        @JavascriptInterface
+        public boolean canSaveFile() {
+            return Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q;
+        }
+
+        /** Opens the share sheet for a library backup (base64 JSON), e.g. to Drive or email. */
+        @JavascriptInterface
+        public boolean shareFile(final String base64Json, final String fileName, final String title) {
+            if (destroyed) return false;
+            final byte[] json = decodeExportJson(base64Json);
+            if (json == null) return false;
+            final Uri uri;
+            try {
+                uri = writeExportToCache(json, safeExportFileName(fileName));
+            } catch (IOException | RuntimeException e) {
+                return false;
+            }
+            final String text = title == null ? "" : title.trim();
+            runOnUiThread(() -> {
+                if (destroyed) return;
+                Intent send = new Intent(Intent.ACTION_SEND)
+                        .setType(EXPORT_MIME)
+                        .putExtra(Intent.EXTRA_STREAM, uri)
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                send.setClipData(ClipData.newRawUri(text, uri));
+                if (!text.isEmpty()) send.putExtra(Intent.EXTRA_TITLE, text);
+                try {
+                    startActivity(Intent.createChooser(send, null));
+                } catch (ActivityNotFoundException ignored) {
+                    // No app can receive files; nothing else to try.
+                }
+            });
+            return true;
         }
 
         /** hex: "#RGB" or "#RRGGBB". Ignored if malformed. */

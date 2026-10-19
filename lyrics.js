@@ -207,9 +207,54 @@ export function parseLRC(lrcText) {
 }
 
 /**
- * Fetch lyrics from LRCLIB with multi-tier fallback (Exact GET -> Cleaned GET -> Search API)
+ * Rights for lyrics that come from LRCLIB. Its database is openly shared, but the lyrics stay
+ * their songwriters' copyright, so they are shown with this credit and cards keep the short quote.
+ */
+export const LRCLIB_RIGHTS = Object.freeze({
+  source: 'lrclib',
+  rights: 'community',
+  license: 'unverified',
+  licenseUrl: '',
+  label: 'Community lyrics',
+  allowsFull: false,
+  credit: 'Lyrics from LRCLIB community; rights stay with the songwriters'
+});
+
+/** Copy of an LRCLIB result with LRCLIB_RIGHTS attached when it has lyrics. */
+export function withLrclibRights(result) {
+  if (!result || result.rights || (result.status !== 'synced' && result.status !== 'plain')) return result;
+  return { ...result, rights: LRCLIB_RIGHTS };
+}
+
+let userLyricsProvider = null;
+
+/**
+ * Lyrics people added themselves (user-lyrics.js) take priority over LRCLIB. The provider gets
+ * the track and resolves lyricsData or null; app.js registers UserLyricsStore.lyricsFor.
+ */
+export function setUserLyricsProvider(provider) {
+  userLyricsProvider = typeof provider === 'function' ? provider : null;
+}
+
+/**
+ * Lyrics for a track: the user's own lyrics when they saved some, else LRCLIB (with its rights).
  */
 export async function fetchLyrics(track) {
+  if (userLyricsProvider && track && track.title) {
+    try {
+      const own = await userLyricsProvider(track);
+      if (own) return own;
+    } catch (err) {
+      console.warn('User lyrics lookup failed:', err);
+    }
+  }
+  return withLrclibRights(await fetchLrclibLyrics(track));
+}
+
+/**
+ * Fetch lyrics from LRCLIB with multi-tier fallback (Exact GET -> Cleaned GET -> Search API)
+ */
+export async function fetchLrclibLyrics(track) {
   if (!track || !track.title) {
     return { status: 'none', message: 'No track provided' };
   }

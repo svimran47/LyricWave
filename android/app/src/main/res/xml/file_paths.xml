@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Files the app may hand to other apps through FileProvider. Only the lyrics-card share folder
-     in the cache dir is exposed; nothing else in app storage is reachable. -->
+<!-- Files the app may hand to other apps through FileProvider. Only the lyrics-card and library-backup
+     share folders in the cache dir are exposed; nothing else in app storage is reachable. -->
 <paths>
     <cache-path name="cards" path="cards/" />
+    <cache-path name="exports" path="exports/" />
 </paths>

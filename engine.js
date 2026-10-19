@@ -185,20 +185,7 @@ export class UnifiedSyncEngine {
           console.error('UnifiedSyncEngine: onLyricsLoaded callback error:', cbErr);
         }
 
-        // Convert duration to ms for lyrics.js helper
-        const lyrics = await fetchLyrics({
-          id: this.track.id,
-          title: this.track.title,
-          artist: this.track.artist,
-          artists: this.track.artist,
-          album: this.track.album,
-          durationMs: this.durationSec * 1000,
-          durationEstimated: Boolean(this.track.durationEstimated),
-          lookupCandidates: this.track.lookupCandidates,
-          syncedLyrics: this.track.syncedLyrics,
-          plainLyrics: this.track.plainLyrics,
-          lrclibId: this.track.lrclibId
-        });
+        const lyrics = await fetchLyrics(this.lyricsRequest());
 
         // Accept lyrics if this is still the active request OR track title/artist match
         if (currentReqId === this._lyricsReqId || 
@@ -221,6 +208,46 @@ export class UnifiedSyncEngine {
     } else {
       this.onPlaybackChange(this.isPlaying);
     }
+  }
+
+  /** What lyrics.js needs to find this track's lyrics (duration in ms). */
+  lyricsRequest() {
+    return {
+      id: this.track.id,
+      title: this.track.title,
+      artist: this.track.artist,
+      artists: this.track.artist,
+      album: this.track.album,
+      durationMs: this.durationSec * 1000,
+      durationEstimated: Boolean(this.track.durationEstimated),
+      lookupCandidates: this.track.lookupCandidates,
+      syncedLyrics: this.track.syncedLyrics,
+      plainLyrics: this.track.plainLyrics,
+      lrclibId: this.track.lrclibId,
+      stableId: this.track.stableId,
+      openTrack: this.track.openTrack
+    };
+  }
+
+  /**
+   * Fetch the current track's lyrics again without treating it as a new song (no track-change
+   * callbacks, no extra play in the library). Used after the user saves or removes their lyrics.
+   */
+  async reloadLyrics() {
+    if (!this.track) return;
+    const reqId = ++this._lyricsReqId;
+    const trackId = this.track.id;
+    try {
+      const lyrics = await fetchLyrics(this.lyricsRequest());
+      if (reqId !== this._lyricsReqId || !this.track || this.track.id !== trackId) return;
+      this.lyricsData = lyrics || { status: 'not_found', message: 'No synced lyrics found on LRCLIB.' };
+    } catch (err) {
+      if (reqId !== this._lyricsReqId) return;
+      this.lyricsData = { status: 'error', message: err?.message || 'Unable to load lyrics.' };
+    }
+    this.activeLineIndex = -1;
+    this.adoptLyricsDuration(this.lyricsData);
+    this.onLyricsLoaded(this.lyricsData);
   }
 
   /**

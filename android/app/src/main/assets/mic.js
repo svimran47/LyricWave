@@ -512,6 +512,8 @@ export class MicSource {
       confidence: result.confidence,
       hasOffset,
       spotifyId: result.raw?.spotifyTrackId || null,
+      // Shazam / AudD return an ISRC; ACRCloud nests it in external_ids. Feeds the Library's MusicBrainz match.
+      isrc: result.raw?.isrc || result.raw?.externalIds?.isrc || null,
       // Canonical / alternative names from the recognizer, used if LRCLIB misses the main title.
       lookupCandidates: Array.isArray(result.lookupCandidates) ? result.lookupCandidates : []
     });

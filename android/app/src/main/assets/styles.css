@@ -10180,3 +10180,656 @@ body.stage-open .toast-region {
     max-height: 260px;
   }
 }
+
+/* =====================================================================
+   Library (Discover > Library): open track collector
+   ===================================================================== */
+.library-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.library-mode-bar {
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.library-filter {
+  flex: 1 1 200px;
+  min-width: 0;
+  min-height: var(--tap);
+  padding: 0 var(--space-4);
+  background: var(--fill-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  font-size: var(--fs-base);
+}
+
+.library-filter:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* Discover now has three views (Top This Week | News | Library): size buttons to their labels */
+.discover-bar > .segmented {
+  max-width: 400px;
+  grid-auto-columns: auto;
+}
+
+.discover-bar > .segmented .segmented-btn {
+  padding: 0 var(--space-2);
+}
+
+@media (max-width: 480px) {
+  .discover-bar > .segmented .segmented-btn {
+    font-size: var(--fs-sm);
+  }
+}
+
+.library-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.chart-song-card.library-song-card {
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+}
+
+.library-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.library-badge .icon {
+  width: 12px;
+  height: 12px;
+}
+
+.library-badge--open {
+  color: var(--success-text);
+  background: var(--success-bg);
+  border-color: var(--success-border);
+}
+
+.library-badge--pending {
+  border-style: dashed;
+}
+
+.library-sub {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.library-artist-card {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 0.65rem;
+  width: 100%;
+  min-height: 66px;
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.library-artist-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+@media (hover: hover) {
+  .library-artist-card:hover {
+    background: var(--bg-elevated);
+    border-color: var(--border-highlight);
+  }
+}
+
+.library-artist-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.library-artist-meta > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-initial {
+  font-size: var(--fs-lg);
+  font-weight: 800;
+}
+
+.library-chevron {
+  color: var(--text-muted);
+}
+
+.library-artist-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.library-back {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.library-back .icon {
+  transform: rotate(180deg);
+}
+
+.library-artist-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.library-artist-head .media-thumb {
+  flex: 0 0 88px;
+  width: 88px;
+  height: 88px;
+}
+
+.library-artist-head-text {
+  min-width: 0;
+}
+
+.library-artist-name {
+  margin: 0;
+  font-size: var(--fs-xl);
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.library-artist-dis,
+.library-artist-facts,
+.library-artist-loading {
+  margin: var(--space-1) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.library-artist-desc {
+  margin: 0;
+  font-size: var(--fs-base);
+}
+
+.library-genres {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.library-genre {
+  cursor: default;
+}
+
+.library-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.library-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.library-section-title {
+  margin: var(--space-2) 0 0;
+  font-size: var(--fs-md);
+}
+
+.library-credits {
+  margin: var(--space-3) 0 var(--space-4);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.library-credits a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+/* ==========================================================================
+   Free music (Openverse) in Discover > Library, and the open-license credit
+   ========================================================================== */
+
+/* Badge for a song's own Creative Commons / public domain license (text + check, not colour alone) */
+.library-badge--free {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  text-decoration: none;
+}
+
+a.library-badge--free:hover,
+a.library-badge--free:focus-visible {
+  text-decoration: underline;
+}
+
+.library-commercial-toggle[aria-pressed="true"]::before {
+  content: "✓ ";
+}
+
+.free-intro .free-suggestions {
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: var(--space-3);
+}
+
+.free-count {
+  display: block;
+  margin: 0 0 var(--space-2);
+  white-space: normal;
+}
+
+.free-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.free-save[aria-pressed="true"] {
+  color: var(--accent);
+}
+
+.free-source-link {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+}
+
+.free-source-link .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.free-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.free-footer:empty {
+  display: none;
+}
+
+/* Now playing: license credit under title / artist (only for openly licensed songs) */
+.stage-license {
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--fs-xs);
+  line-height: 1.3;
+  color: var(--text-muted);
+}
+
+.stage-license.hidden {
+  display: none;
+}
+
+.stage-license a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media (max-width: 420px) {
+  .free-actions .btn-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
+/* ==========================================================================
+   Your lyrics: lyrics source / rights line and the editor dialog
+   ========================================================================== */
+
+.lyrics-credit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+  margin: var(--space-2) 0 0;
+  padding: 0 var(--space-1);
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.lyrics-credit.hidden {
+  display: none;
+}
+
+.lyrics-credit-edit {
+  min-height: 32px;
+  padding: 0 var(--space-2);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.lyrics-credit-edit:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.user-lyrics-dialog {
+  width: min(640px, calc(100vw - 2 * var(--space-4)));
+}
+
+.user-lyrics-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.user-lyrics-text {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 180px;
+  max-height: 40vh;
+  padding: var(--space-3);
+  resize: vertical;
+  background: var(--fill-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+
+.user-lyrics-text:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.user-lyrics-credit {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.user-lyrics-optional {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.user-lyrics-error {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--danger-text, #c62828);
+}
+
+.user-lyrics-error.hidden {
+  display: none;
+}
+
+.user-lyrics-dialog .modal-footer {
+  flex-wrap: wrap;
+}
+
+/* ==========================================================================
+   Artist photos from Wikimedia Commons (credit line under the artist header)
+   ========================================================================== */
+
+.library-photo-credit {
+  margin: calc(var(--space-1) * -1) 0 var(--space-2);
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.library-photo-credit a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ==========================================================================
+   Similar artists (ListenBrainz) and "Free … music to play" on artist pages
+   ========================================================================== */
+
+.library-similar {
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.library-similar-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-similar-chip[data-in-library="true"] {
+  border-color: var(--accent);
+}
+
+.library-similar-chip .icon {
+  width: 14px;
+  height: 14px;
+  color: var(--accent);
+}
+
+.library-similar-credit {
+  display: block;
+  margin: var(--space-2) 0 var(--space-3);
+  white-space: normal;
+}
+
+.library-similar-credit a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.library-free-like {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  max-width: 100%;
+}
+
+.library-free-like span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   Free music queue: "Play all" buttons
+   ========================================================================== */
+
+.free-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+}
+
+.free-head .free-count {
+  flex: 1 1 180px;
+  margin: 0;
+}
+
+.library-play-all {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+}
+
+.free-head .library-play-all {
+  margin: 0;
+}
+
+/* ==========================================================================
+   Playlists (Library > Playlists) and the Add to playlist dialog
+   ========================================================================== */
+
+.playlist-new {
+  display: flex;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+}
+
+.playlist-new .search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.playlist-card {
+  cursor: pointer;
+}
+
+.playlist-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.playlist-thumb .icon {
+  width: 24px;
+  height: 24px;
+}
+
+.playlist-head {
+  margin: var(--space-2) 0;
+}
+
+.playlist-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+}
+
+.playlist-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.playlist-rename-form {
+  display: flex;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+}
+
+.playlist-rename-form.hidden {
+  display: none;
+}
+
+.playlist-rename-form .search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.playlist-tracks {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.playlist-track-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.playlist-track-actions .btn-chart-play[disabled] {
+  opacity: 0.35;
+}
+
+.playlist-credits {
+  margin: var(--space-3) 0;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.playlist-credits summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.playlist-credits ul {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-4);
+  overflow-wrap: anywhere;
+}
+
+.playlist-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-3);
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.playlist-pick[disabled] {
+  opacity: 0.6;
+  cursor: default;
+}
+
+@media (max-width: 420px) {
+  .playlist-track-actions .btn-chart-play {
+    width: 36px;
+    height: 36px;
+  }
+}

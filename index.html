@@ -34,6 +34,9 @@
     <symbol id="i-rewind-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 2.64-6.36L3 8.3"/><path d="M3 3.5v4.8h4.8"/><path stroke-width="1.7" d="M13.8 9h-3.1l-.4 2.7a2.1 2.1 0 1 1 .5 3.3"/></symbol>
     <symbol id="i-forward-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8.3"/><path d="M21 3.5v4.8h-4.8"/><path stroke-width="1.7" d="M13.8 9h-3.1l-.4 2.7a2.1 2.1 0 1 1 .5 3.3"/></symbol>
     <symbol id="i-minus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></symbol>
+    <symbol id="i-list-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M18 9v6"/><path d="M21 12h-6"/></symbol>
+    <symbol id="i-arrow-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></symbol>
+    <symbol id="i-arrow-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
     <symbol id="i-more-horizontal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
     <symbol id="i-chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
@@ -154,6 +157,14 @@
             <svg class="icon" width="24" height="24" aria-hidden="true" focusable="false"><use href="#i-newspaper"/></svg>
           </span>
           <span class="tab-label">News</span>
+        </button>
+
+        <!-- Library is a Discover view too (Top This Week | News | Library); hidden like #tabNews -->
+        <button id="tabLibrary" class="source-tab hidden" role="tab" aria-selected="false" aria-hidden="true" tabindex="-1" data-tab="library">
+          <span class="tab-icon" aria-hidden="true">
+            <svg class="icon" width="24" height="24" aria-hidden="true" focusable="false"><use href="#i-music"/></svg>
+          </span>
+          <span class="tab-label">Library</span>
         </button>
 
         <button id="tabConnect" class="source-tab" role="tab" aria-selected="false" data-tab="connect">
@@ -386,6 +397,7 @@
             <div class="segmented" role="tablist" aria-label="Discover sections" data-segmented="discover">
               <button class="segmented-btn active" type="button" role="tab" aria-selected="true" aria-controls="panelCharts" data-discover="charts">Top This Week</button>
               <button class="segmented-btn" type="button" role="tab" aria-selected="false" aria-controls="panelNews" data-discover="news">News</button>
+              <button class="segmented-btn" type="button" role="tab" aria-selected="false" aria-controls="panelLibrary" data-discover="library">Library</button>
             </div>
             <div class="discover-actions">
               <span class="discover-updated" id="chartsUpdatedTag">Live Today</span>
@@ -429,6 +441,7 @@
             <div class="segmented" role="tablist" aria-label="Discover sections" data-segmented="discover">
               <button class="segmented-btn" type="button" role="tab" aria-selected="false" aria-controls="panelCharts" data-discover="charts">Top This Week</button>
               <button class="segmented-btn active" type="button" role="tab" aria-selected="true" aria-controls="panelNews" data-discover="news">News</button>
+              <button class="segmented-btn" type="button" role="tab" aria-selected="false" aria-controls="panelLibrary" data-discover="library">Library</button>
             </div>
             <div class="discover-actions">
               <span class="discover-updated" id="newsUpdatedTag">Live Today</span>
@@ -457,6 +470,47 @@
             <p>Loading fresh music headlines...</p>
           </div>
         </div>
+      </section>
+
+      <!-- 4b. Discover Panel C: Library (open track collector: songs and artists matched to MusicBrainz) -->
+      <section id="panelLibrary" class="tab-panel hidden" aria-label="Discover: Your Library">
+        <div class="charts-hero-card">
+          <h2 class="sr-only">Your Library</h2>
+          <div class="discover-bar">
+            <div class="segmented" role="tablist" aria-label="Discover sections" data-segmented="discover">
+              <button class="segmented-btn" type="button" role="tab" aria-selected="false" aria-controls="panelCharts" data-discover="charts">Top This Week</button>
+              <button class="segmented-btn" type="button" role="tab" aria-selected="false" aria-controls="panelNews" data-discover="news">News</button>
+              <button class="segmented-btn active" type="button" role="tab" aria-selected="true" aria-controls="panelLibrary" data-discover="library">Library</button>
+            </div>
+            <div class="discover-actions">
+              <span class="discover-updated" id="libraryCountTag">0 songs</span>
+            </div>
+          </div>
+          <p id="librarySubtitle" class="charts-subtitle">Every song you play, matched to open music data. Tap a song for synced lyrics.</p>
+
+          <div class="library-toolbar">
+            <div class="chip-row library-mode-bar" role="group" aria-label="Library view">
+              <button class="chip active" type="button" aria-pressed="true" data-library-mode="songs">Songs</button>
+              <button class="chip" type="button" aria-pressed="false" data-library-mode="artists">Artists</button>
+              <button class="chip" type="button" aria-pressed="false" data-library-mode="free">Free music</button>
+              <button class="chip" type="button" aria-pressed="false" data-library-mode="playlists">Playlists</button>
+            </div>
+            <input id="libraryFilter" class="search-input library-filter" type="search" placeholder="Filter songs, artists or albums…" autocomplete="off" aria-label="Filter your library">
+            <button id="libraryCommercialOnly" class="chip hidden library-commercial-toggle" type="button" aria-pressed="false" title="Only show songs whose license allows commercial use">Commercial use OK</button>
+          </div>
+        </div>
+
+        <div id="libraryListContainer" class="charts-list-wrap library-list-wrap" aria-live="polite"></div>
+
+        <p class="library-credits">
+          Song and artist details from <a href="https://musicbrainz.org/" target="_blank" rel="noopener noreferrer">MusicBrainz</a> and
+          <a href="https://www.wikidata.org/" target="_blank" rel="noopener noreferrer">Wikidata</a> (CC0). Cover art via the
+          <a href="https://coverartarchive.org/" target="_blank" rel="noopener noreferrer">Cover Art Archive</a>; images belong to their owners.
+          Artist photos from <a href="https://commons.wikimedia.org/" target="_blank" rel="noopener noreferrer">Wikimedia Commons</a>, credited under each file's license.
+          Similar artists from <a href="https://listenbrainz.org/" target="_blank" rel="noopener noreferrer">ListenBrainz</a> (CC0).
+          Free music via <a href="https://openverse.org/" target="_blank" rel="noopener noreferrer">Openverse</a>, under each song's own license.
+          Your library stays on this device.
+        </p>
       </section>
 
       <!-- 5. Connect Panel: Internal Segmented Switcher for Connected Accounts (Last.fm & Spotify) -->
@@ -558,6 +612,7 @@
         <h2 id="trackTitle" class="stage-title" title="">Song Title</h2>
         <p id="trackArtist" class="stage-artist">Artist Name</p>
         <p id="trackAlbum" class="stage-album hidden"></p>
+        <p id="trackLicense" class="stage-license hidden"></p>
       </div>
       <span class="source-chip">
         <span id="playStateDot" class="status-dot"></span>
@@ -657,6 +712,12 @@
       <div id="lyricsViewport" class="lyrics-viewport" tabindex="0" role="region" aria-label="Song Lyrics">
         <div id="lyricsContent" class="lyrics-content"></div>
       </div>
+
+      <!-- Where the lyrics come from and what rights they carry -->
+      <p id="lyricsCredit" class="lyrics-credit hidden">
+        <span id="lyricsCreditText"></span>
+        <button id="btnLyricsCreditEdit" class="lyrics-credit-edit" type="button">Add your lyrics</button>
+      </p>
     </div>
 
   </section>
@@ -693,6 +754,24 @@
       </div>
 
       <div class="sheet-body">
+
+        <section id="sheetQueueSection" class="sheet-section hidden" aria-labelledby="sheetQueueTitle">
+          <h3 id="sheetQueueTitle" class="sheet-section-title">Up next</h3>
+          <button id="btnQueueNext" class="sheet-row" type="button" aria-label="Next song in the queue" title="Next song (&gt;)">
+            <svg class="icon icon--sm" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-skip-forward"/></svg>
+            <span class="sheet-row-label">Next song</span>
+            <span id="queueNextHint" class="sheet-row-hint"></span>
+          </button>
+          <button id="btnQueuePrev" class="sheet-row" type="button" aria-label="Previous song in the queue" title="Previous song (&lt;)">
+            <svg class="icon icon--sm" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-skip-back"/></svg>
+            <span class="sheet-row-label">Previous song</span>
+          </button>
+          <button id="btnQueueShuffle" class="sheet-row" type="button" aria-pressed="false" aria-label="Shuffle the queue">
+            <svg class="icon icon--sm" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-refresh"/></svg>
+            <span class="sheet-row-label">Shuffle</span>
+            <span id="queueShuffleHint" class="sheet-row-hint">Off</span>
+          </button>
+        </section>
 
         <section class="sheet-section" aria-labelledby="sheetThemeTitle">
           <h3 id="sheetThemeTitle" class="sheet-section-title">Theme</h3>
@@ -849,6 +928,11 @@
             <svg class="icon icon--sm" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-sparkles"/></svg>
             <span class="sheet-row-label">Lyrics card</span>
             <span class="sheet-row-hint">Turn a line into an image to share</span>
+          </button>
+          <button id="btnEditUserLyrics" class="sheet-row" type="button" aria-label="Add or edit your lyrics for this song" title="Add your lyrics">
+            <svg class="icon icon--sm" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-file-text"/></svg>
+            <span class="sheet-row-label">Your lyrics</span>
+            <span class="sheet-row-hint">Add lyrics you have the rights to</span>
           </button>
           <button id="btnResync" class="sheet-row btn-resync hidden" type="button" aria-label="Re-sync room audio" title="Re-sync room audio (detect song or correct drift)">
             <svg class="icon icon--sm" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-refresh"/></svg>
@@ -1088,6 +1172,13 @@
               </label>
             </div>
             <div class="set-row">
+              <label class="set-row-label" for="settingCatDancer">Dancing cat on the lyrics stage</label>
+              <label class="switch">
+                <input id="settingCatDancer" type="checkbox">
+                <span class="slider-round"></span>
+              </label>
+            </div>
+            <div class="set-row">
               <label class="set-row-label" for="settingHaptics">Haptic feedback</label>
               <label class="switch">
                 <input id="settingHaptics" type="checkbox" checked>
@@ -1168,6 +1259,21 @@
               <span class="set-row-label">Privacy policy</span>
               <svg class="icon icon--sm set-row-trail" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-external-link"/></svg>
             </a>
+            <div class="set-row">
+              <span class="set-row-text">
+                <span class="set-row-label">Back up your library</span>
+                <span id="backupLibraryHint" class="set-row-sub">Songs, artists, playlists and your lyrics, with their licenses, in one file</span>
+              </span>
+              <button id="btnBackupLibrary" class="set-btn" type="button" aria-describedby="backupLibraryHint">Back up</button>
+            </div>
+            <div class="set-row">
+              <span class="set-row-text">
+                <span class="set-row-label">Restore from a backup</span>
+                <span id="restoreLibraryHint" class="set-row-sub">Adds a backup to this device; nothing here is deleted</span>
+              </span>
+              <button id="btnRestoreLibrary" class="set-btn" type="button" aria-describedby="restoreLibraryHint">Restore</button>
+              <input id="restoreLibraryFile" class="sr-only" type="file" accept=".json,application/json" tabindex="-1" aria-hidden="true">
+            </div>
             <div class="set-row">
               <span class="set-row-label">Reset settings</span>
               <button id="btnResetDefaults" class="set-btn" type="button" aria-label="Reset settings to defaults">Reset</button>
@@ -1290,6 +1396,10 @@
             <kbd class="shortcut-key">C</kbd>
           </div>
           <div class="shortcut-row">
+            <span class="shortcut-action">Next / Previous Free Music Song</span>
+            <kbd class="shortcut-key">&gt; / &lt;</kbd>
+          </div>
+          <div class="shortcut-row">
             <span class="shortcut-action">Show Keyboard Shortcuts</span>
             <kbd class="shortcut-key">?</kbd>
           </div>
@@ -1355,6 +1465,79 @@
           <svg class="icon icon--sm" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-share"/></svg>
           <span>Share</span>
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================
+       Your lyrics: lyrics the user adds, with the rights they hold
+       =================================================================== -->
+  <div id="userLyricsBackdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="userLyricsTitle" aria-hidden="true">
+    <div class="modal-dialog user-lyrics-dialog">
+      <div class="modal-header">
+        <div class="modal-header-meta">
+          <h3 id="userLyricsTitle" class="modal-title">
+            <svg class="icon" width="24" height="24" aria-hidden="true" focusable="false"><use href="#i-file-text"/></svg>
+            <span>Your lyrics</span>
+          </h3>
+          <p id="userLyricsSubtitle" class="modal-subtitle"></p>
+        </div>
+        <button id="btnCloseUserLyrics" class="btn-close-modal" type="button" aria-label="Close your lyrics"><svg class="icon" width="24" height="24" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
+      </div>
+
+      <div class="modal-body user-lyrics-body">
+        <label for="userLyricsText" class="lyric-card-label">Lyrics</label>
+        <textarea id="userLyricsText" class="user-lyrics-text" rows="10" spellcheck="false" aria-describedby="userLyricsType"></textarea>
+        <p id="userLyricsType" class="lyric-card-hint" aria-live="polite"></p>
+
+        <section class="lyric-card-section" aria-labelledby="userLyricsRightsTitle">
+          <h4 id="userLyricsRightsTitle" class="lyric-card-label">Your rights to these lyrics</h4>
+          <div id="userLyricsRights" class="anim-style-options" role="radiogroup" aria-labelledby="userLyricsRightsTitle"></div>
+        </section>
+
+        <label for="userLyricsCredit" class="lyric-card-label">Lyricist or source <span class="user-lyrics-optional">(optional)</span></label>
+        <input id="userLyricsCredit" class="search-input user-lyrics-credit" type="text" maxlength="120" autocomplete="off" placeholder="e.g. Traditional, or the songwriter's name">
+
+        <p id="userLyricsError" class="user-lyrics-error hidden" role="alert"></p>
+        <p class="lyric-card-note">Only add lyrics you have the right to use. They stay on this device and are used instead of LRCLIB for this song.</p>
+      </div>
+
+      <div class="modal-footer btn-row">
+        <button id="btnUserLyricsDelete" class="btn btn-ghost hidden" type="button">
+          <svg class="icon icon--sm" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-trash"/></svg>
+          <span>Remove</span>
+        </button>
+        <button id="btnUserLyricsCancel" class="btn btn-ghost" type="button">Cancel</button>
+        <button id="btnUserLyricsSave" class="btn btn-primary" type="button">
+          <svg class="icon icon--sm" width="18" height="18" aria-hidden="true" focusable="false"><use href="#i-check"/></svg>
+          <span>Save</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================
+       Add to playlist (Free music songs)
+       =================================================================== -->
+  <div id="playlistPickerBackdrop" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="playlistPickerTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog--sm playlist-picker-dialog">
+      <div class="modal-header">
+        <div class="modal-header-meta">
+          <h3 id="playlistPickerTitle" class="modal-title">
+            <svg class="icon" width="24" height="24" aria-hidden="true" focusable="false"><use href="#i-list-plus"/></svg>
+            <span>Add to playlist</span>
+          </h3>
+          <p id="playlistPickerSubtitle" class="modal-subtitle"></p>
+        </div>
+        <button id="btnClosePlaylistPicker" class="btn-close-modal" type="button" aria-label="Close add to playlist"><svg class="icon" width="24" height="24" aria-hidden="true" focusable="false"><use href="#i-close"/></svg></button>
+      </div>
+      <div class="modal-body playlist-picker-body">
+        <div id="playlistPickerList" class="playlist-picker-list" role="group" aria-label="Your playlists"></div>
+        <form id="playlistPickerNew" class="playlist-new" novalidate>
+          <label class="sr-only" for="playlistPickerName">New playlist name</label>
+          <input id="playlistPickerName" class="search-input playlist-new-name" type="text" maxlength="60" placeholder="New playlist name" autocomplete="off" enterkeyhint="done">
+          <button type="submit" class="btn btn-sm">Create and add</button>
+        </form>
       </div>
     </div>
   </div>

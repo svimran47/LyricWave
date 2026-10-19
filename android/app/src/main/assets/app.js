@@ -32,6 +32,15 @@ import { translateLyrics, defaultTargetLang, TRANSLATE_LANGUAGES, TranslationQuo
 import { BeatVisuals } from './visuals.js';
 import { ProjectMVisualizer, isProjectMSupported } from './projectm-visualizer.js';
 import { LyricCardMaker } from './card.js';
+import { LibraryCollector } from './library.js';
+import { MusicBrainzClient } from './musicbrainz.js';
+import { LibraryView, rowArtUrl } from './library-view.js';
+import { OpenverseClient, playableOpenTrack } from './openverse.js';
+import { setUserLyricsProvider } from './lyrics.js';
+import { UserLyricsStore, UserLyricsDialog } from './user-lyrics.js';
+import { PlayQueue, RESTART_THRESHOLD_SEC } from './queue.js';
+import { PlaylistStore, PlaylistsView, PlaylistPicker } from './playlists.js';
+import { LibraryBackup, BackupFileError, backupFileName, describeCounts, describeRestore, MAX_BACKUP_BYTES } from './backup.js';
 import { signUp, logIn, logOut, getCurrentUser, updateUserPreferences, deleteCurrentAccount } from './user-auth.js';
 
 // DOM Elements: Navigation Tabs
@@ -45,6 +54,7 @@ const tabPanels = {
   search: document.getElementById('panelSearch'),
   charts: document.getElementById('panelCharts'),
   news: document.getElementById('panelNews'),
+  library: document.getElementById('panelLibrary'),
   connect: document.getElementById('panelConnect'),
   lastfm: document.getElementById('panelLastfm'),
   spotify: document.getElementById('panelSpotify')
@@ -188,6 +198,7 @@ const trackSourceBadge = document.getElementById('trackSourceBadge');
 const trackTitle = document.getElementById('trackTitle');
 const trackArtist = document.getElementById('trackArtist');
 const trackAlbum = document.getElementById('trackAlbum');
+const trackLicense = document.getElementById('trackLicense');
 const btnPlayPause = document.getElementById('btnPlayPause');
 const iconPlay = document.getElementById('iconPlay');
 const iconPause = document.getElementById('iconPause');
@@ -197,6 +208,11 @@ const btnResync = document.getElementById('btnResync');
 const btnListenAgain = document.getElementById('btnListenAgain');
 const btnShareSong = document.getElementById('btnShareSong');
 const btnMakeLyricCard = document.getElementById('btnMakeLyricCard');
+const btnEditUserLyrics = document.getElementById('btnEditUserLyrics');
+const userLyricsBackdrop = document.getElementById('userLyricsBackdrop');
+const lyricsCredit = document.getElementById('lyricsCredit');
+const lyricsCreditText = document.getElementById('lyricsCreditText');
+const btnLyricsCreditEdit = document.getElementById('btnLyricsCreditEdit');
 const lyricCardBackdrop = document.getElementById('lyricCardBackdrop');
 const firstRunHint = document.getElementById('firstRunHint');
 const btnDismissFirstRun = document.getElementById('btnDismissFirstRun');
@@ -574,10 +590,12 @@ function updateMediaSessionMetadata(track) {
       );
     }
 
+    // Open tracks carry their license in the album line so the credit reaches the lock screen too.
+    const openCredit = track.openTrack ? (track.openTrack.licenseLabel || track.openTrack.license) : '';
     navigator.mediaSession.metadata = new MediaMetadata({
       title: track.title,
       artist: track.artist || track.artists || 'Unknown Artist',
-      album: track.album || '',
+      album: [track.album || '', openCredit].filter(Boolean).join(' · '),
       artwork
     });
 
@@ -786,6 +804,127 @@ function setArtwork(url) {
   return clean;
 }
 
+/**
+ * Credit line for openly licensed songs (Free music): license, creator and host, linked to the
+ * license and the song's page. CC licenses require it wherever the song plays; hidden otherwise.
+ */
+function renderTrackLicense(track) {
+  if (!trackLicense) return;
+  const ot = track?.openTrack;
+  if (!ot) {
+    trackLicense.replaceChildren();
+    trackLicense.classList.add('hidden');
+    return;
+  }
+  const link = (text, href) => {
+    const clean = sanitizeUrl(href);
+    if (!clean || !/^https:/i.test(clean)) {
+      const span = document.createElement('span');
+      span.textContent = text;
+      return span;
+    }
+    const a = document.createElement('a');
+    a.href = clean;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.textContent = text;
+    return a;
+  };
+  const parts = [link(ot.licenseLabel || ot.license, ot.licenseUrl)];
+  if (ot.creator) parts.push(link(ot.creator, ot.creatorUrl));
+  if (ot.provider) parts.push(link(`via ${ot.provider}`, ot.landingUrl));
+  const nodes = [];
+  parts.forEach((el, i) => {
+    if (i) nodes.push(document.createTextNode(' · '));
+    nodes.push(el);
+  });
+  trackLicense.replaceChildren(...nodes);
+  trackLicense.title = ot.attribution || '';
+  trackLicense.classList.remove('hidden');
+}
+
+// Free music queue ("Play all", auto-advance, Next / Previous, shuffle). See queue.js.
+const playQueue = new PlayQueue();
+const sheetQueueSection = document.getElementById('sheetQueueSection');
+const btnQueueNext = document.getElementById('btnQueueNext');
+const btnQueuePrev = document.getElementById('btnQueuePrev');
+const btnQueueShuffle = document.getElementById('btnQueueShuffle');
+const queueNextHint = document.getElementById('queueNextHint');
+const queueShuffleHint = document.getElementById('queueShuffleHint');
+
+function playQueueItem(item) {
+  const track = item ? playableOpenTrack(item) : null;
+  if (!track) return false;
+  // Reconnecting would stop the source and report it idle, which collapses the stage between songs
+  if (engine.currentSource !== searchSource) engine.connectSource(searchSource);
+  searchSource.selectTrack(track, true);
+  return true;
+}
+
+function playNextInQueue() {
+  if (!playQueue.hasNext) return false;
+  return playQueueItem(playQueue.next());
+}
+
+/** Previous restarts the song after its first few seconds, like most players. */
+function playPreviousInQueue() {
+  if (!playQueue.active) return false;
+  const positionSec = engine.track ? engine.getEffectivePositionMs() / 1000 : 0;
+  if (positionSec > RESTART_THRESHOLD_SEC || !playQueue.hasPrevious) {
+    engine.seek(0);
+    return true;
+  }
+  return playQueueItem(playQueue.previous());
+}
+
+/** Show / hide the queue rows in the More sheet and the lock-screen Next / Previous buttons. */
+function updateQueueControls() {
+  const on = playQueue.active;
+  sheetQueueSection?.classList.toggle('hidden', !on);
+  btnQueueShuffle?.classList.toggle('hidden', playQueue.length < 3);
+  if (btnQueueNext) btnQueueNext.disabled = !playQueue.hasNext;
+  if (queueNextHint) {
+    const next = playQueue.upNext;
+    queueNextHint.textContent = on
+      ? (next ? `${playQueue.position} of ${playQueue.length} · Up next: ${next.title}` : `${playQueue.position} of ${playQueue.length} · Last song`)
+      : '';
+  }
+  btnQueueShuffle?.setAttribute('aria-pressed', playQueue.shuffle ? 'true' : 'false');
+  if (queueShuffleHint) queueShuffleHint.textContent = playQueue.shuffle ? 'On' : 'Off';
+  if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+    try {
+      navigator.mediaSession.setActionHandler('nexttrack', on && playQueue.hasNext ? () => playNextInQueue() : null);
+      navigator.mediaSession.setActionHandler('previoustrack', on ? () => playPreviousInQueue() : null);
+    } catch {}
+  }
+}
+
+btnQueueNext?.addEventListener('click', () => { playNextInQueue(); updateQueueControls(); });
+btnQueuePrev?.addEventListener('click', () => { playPreviousInQueue(); updateQueueControls(); });
+btnQueueShuffle?.addEventListener('click', () => {
+  playQueue.setShuffle(!playQueue.shuffle);
+  updateQueueControls();
+});
+
+// Your lyrics: lyrics the user saved for a song are used before LRCLIB (see user-lyrics.js).
+const userLyricsStore = new UserLyricsStore();
+setUserLyricsProvider((track) => userLyricsStore.lyricsFor(track));
+
+// Library (open track collector): every played song is stored in IndexedDB and matched to MusicBrainz.
+const libraryCollector = new LibraryCollector({
+  mb: new MusicBrainzClient({ apiBase: (CONFIG && CONFIG.API_BASE_URL) ? CONFIG.API_BASE_URL : '' }),
+  onChange: () => libraryView?.refresh(),
+  onResolved: (track, row) => {
+    // Hand the stable ids back to the song on screen so later lookups key on the same thing.
+    const live = engine?.track;
+    if (!live || live.id !== track.id || !row?.mbid) return;
+    live.mbid = row.mbid;
+    if (row.isrc) live.isrc = row.isrc;
+    live.stableId = row.id;
+  }
+});
+let libraryView = null;
+
 const engine = new UnifiedSyncEngine({
   onTrackChange: (track) => {
     hasTrack = true;
@@ -805,6 +944,7 @@ const engine = new UnifiedSyncEngine({
     trackArtist.textContent = artistText;
     trackAlbum.textContent = track.album || '';
     trackAlbum.classList.toggle('hidden', !track.album);
+    renderTrackLicense(track);
     if (miniTitle) miniTitle.textContent = track.title;
     if (miniArtist) miniArtist.textContent = artistText;
     if (phoneNowTitle) phoneNowTitle.textContent = track.title;
@@ -814,6 +954,9 @@ const engine = new UnifiedSyncEngine({
     if (track.isApproximate || track.source === 'lastfm') {
       trackSourceBadge.textContent = 'APPROXIMATE';
       trackSourceBadge.title = 'Last.fm sync starts at 0s on track change. Use the sync offset in the More sheet to calibrate.';
+    } else if (track.openTrack) {
+      trackSourceBadge.textContent = 'FREE MUSIC';
+      trackSourceBadge.title = 'Openly licensed song from Openverse';
     } else {
       trackSourceBadge.textContent = track.source?.toUpperCase() || 'LIVE';
       trackSourceBadge.title = '';
@@ -841,8 +984,14 @@ const engine = new UnifiedSyncEngine({
       else updateStageChrome();
     }
 
+    // Playing anything that isn't the queue's current song ends the Free music queue
+    if (playQueue.active && !playQueue.isCurrent(track.id)) playQueue.clear();
+    updateQueueControls();
+
     // Persist song to recently identified list
     saveRecentSong(track);
+    // Collect it into the Library (matching to MusicBrainz runs in the background, 1 request/s)
+    libraryCollector.collect(track).catch((err) => console.warn('Library collect failed:', err));
 
     // Update Media Session API metadata & Lock screen controls
     updateMediaSessionMetadata(track);
@@ -1535,6 +1684,15 @@ if (btnDismissTapBanner) {
 const searchSource = new SearchSource({
   onError: (errMsg) => {
     showAlert(errMsg, 'warning');
+  },
+  // Free music queue: move on when a song ends or its audio can't be played
+  onEnded: ({ failed, track }) => {
+    if (!track || !playQueue.isCurrent(track.id)) return;
+    if (!playQueue.hasNext) {
+      if (!failed) showAlert('That was the last song in the queue.', 'info');
+      return;
+    }
+    playQueueItem(playQueue.next());
   }
 });
 
@@ -2452,17 +2610,102 @@ if (btnSubSpotify) {
   btnSubSpotify.addEventListener('click', () => switchConnectSubTab('spotify'));
 }
 
-// Discover = Charts | News. Both views live under the single "Discover" nav item (#tabCharts);
-// #tabNews stays in the DOM (hidden) so a persisted 'news' tab and programmatic clicks keep working.
+// Discover = Charts | News | Library. All views live under the single "Discover" nav item (#tabCharts);
+// #tabNews and #tabLibrary stay in the DOM (hidden) so persisted tabs and programmatic clicks keep working.
 const discoverButtons = document.querySelectorAll('.segmented[data-segmented="discover"] .segmented-btn');
+const DISCOVER_VIEWS = ['charts', 'news', 'library'];
 
 function getDiscoverView() {
   try {
-    return localStorage.getItem(STORAGE_DISCOVER_VIEW_KEY) === 'news' ? 'news' : 'charts';
+    const saved = localStorage.getItem(STORAGE_DISCOVER_VIEW_KEY);
+    return DISCOVER_VIEWS.includes(saved) ? saved : 'charts';
   } catch {
     return 'charts';
   }
 }
+
+// Playlists of Free music songs (Library > Playlists, and the Add to playlist dialog)
+const playlistStore = new PlaylistStore();
+const libraryHelpers = { escapeHtml, icon, mediaThumbHtml, wireMediaThumbs };
+const playlistPickerBackdrop = document.getElementById('playlistPickerBackdrop');
+const playlistPicker = playlistPickerBackdrop ? new PlaylistPicker({
+  backdrop: playlistPickerBackdrop,
+  store: playlistStore,
+  collector: libraryCollector,
+  notify: (msg, type) => showAlert(msg, type),
+  onChange: () => libraryView?.refresh(),
+  onClose: () => {
+    const back = playlistPickerReturnFocus;
+    playlistPickerReturnFocus = null;
+    if (back?.isConnected) back.focus({ preventScroll: true });
+  }
+}) : null;
+let playlistPickerReturnFocus = null;
+playlistPickerBackdrop?.addEventListener('keydown', (e) => {
+  if (e.key === 'Tab') trapFocus(playlistPickerBackdrop, e);
+});
+
+libraryView = new LibraryView({
+  container: document.getElementById('libraryListContainer'),
+  filterInput: document.getElementById('libraryFilter'),
+  modeChips: document.querySelectorAll('.library-mode-bar .chip'),
+  countTag: document.getElementById('libraryCountTag'),
+  collector: libraryCollector,
+  helpers: { escapeHtml, icon, mediaThumbHtml, wireMediaThumbs },
+  openverse: new OpenverseClient(),
+  commercialToggle: document.getElementById('libraryCommercialOnly'),
+  subtitle: document.getElementById('librarySubtitle'),
+  notify: (msg, type) => showAlert(msg, type),
+  playlists: new PlaylistsView({
+    container: document.getElementById('libraryListContainer'),
+    store: playlistStore,
+    collector: libraryCollector,
+    helpers: libraryHelpers,
+    notify: (msg, type) => showAlert(msg, type),
+    onPlay: (row, queue) => libraryView?.onPlay(row, queue)
+  }),
+  onAddToPlaylist: (item) => {
+    playlistPickerReturnFocus = document.activeElement;
+    playlistPicker?.open(item);
+  },
+  // Similar artists that aren't in the library open Search, pre-filled with their name
+  onSearch: (query) => {
+    document.getElementById('tabSearch')?.click();
+    if (searchInput && query) {
+      searchInput.value = query;
+      searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+      searchInput.focus({ preventScroll: true });
+    }
+  },
+  onPlay: (row, queue) => {
+    engine.connectSource(searchSource);
+    // Free music (saved row or search result): play the full openly licensed audio file, and
+    // queue the rest of the list it was played from.
+    if (row.openTrack && queue?.items?.length) {
+      playQueueItem(playQueue.setItems(queue.items, queue.index, { label: queue.label }));
+      return;
+    }
+    const open = row.openTrack ? playableOpenTrack(row) : null;
+    if (open) {
+      playQueue.clear();
+      searchSource.selectTrack(open, true);
+      return;
+    }
+    searchSource.selectTrack({
+      id: `library_${row.id}`,
+      title: row.title,
+      artist: row.artist,
+      album: row.album || '',
+      albumArt: row.sourceArt || rowArtUrl(row),
+      durationMs: row.durationSec > 0 ? row.durationSec * 1000 : 180000,
+      durationEstimated: !(row.durationSec > 0),
+      lrclibId: row.lrclibId || null,
+      mbid: row.mbid || null,
+      isrc: row.isrc || null,
+      source: 'library'
+    }, true);
+  }
+});
 
 function setDiscoverView(view) {
   try { localStorage.setItem(STORAGE_DISCOVER_VIEW_KEY, view); } catch {}
@@ -2478,10 +2721,12 @@ setDiscoverView(getDiscoverView());
 function activateTab(targetTab) {
   activeTab = targetTab;
   localStorage.setItem(STORAGE_LAST_SOURCE_KEY, targetTab);
-  if (targetTab === 'charts' || targetTab === 'news') setDiscoverView(targetTab);
+  if (DISCOVER_VIEWS.includes(targetTab)) setDiscoverView(targetTab);
+  if (targetTab === 'library') libraryView?.show();
+  else libraryView?.hide();
 
-  // News is a view inside the Discover nav item, so Discover is the highlighted nav tab for both.
-  const navTarget = targetTab === 'news' ? 'charts' : targetTab;
+  // News and Library are views inside the Discover nav item, so Discover is the highlighted nav tab for all three.
+  const navTarget = DISCOVER_VIEWS.includes(targetTab) ? 'charts' : targetTab;
   sourceTabs.forEach(t => {
     const isCurrent = t.dataset.tab === navTarget;
     t.classList.toggle('active', isCurrent);
@@ -2501,7 +2746,7 @@ function activateTab(targetTab) {
 
   // Browsing (Listen / Search / Discover) must not end the song shown in the mini player: the source that
   // owns the live track keeps running. Phone and Connect tabs deliberately hand over to their own source.
-  const browsing = ['mic', 'search', 'charts', 'news'].includes(targetTab);
+  const browsing = ['mic', 'search', 'charts', 'news', 'library'].includes(targetTab);
   const keepLive = Boolean(engine.track) && browsing;
   const liveOwner = keepLive ? engine.currentSource : null;
 
@@ -2566,6 +2811,12 @@ function activateTab(targetTab) {
     if (!cachedNewsData) {
       loadNews(currentNewsSource);
     }
+  } else if (targetTab === 'library') {
+    if (!keepLive) {
+      engine.connectSource(searchSource);
+      engine.loadOffsetForSource('search');
+      updateOffsetUI();
+    }
   } else if (targetTab === 'mic') {
     if (!keepLive) {
       engine.connectSource(null);
@@ -2578,15 +2829,15 @@ function activateTab(targetTab) {
 sourceTabs.forEach((tab) => {
   tab.addEventListener('click', () => {
     let targetTab = tab.dataset.tab;
-    // Tapping the Discover nav item resumes the Discover view you last used (Charts or News).
-    if (tab === tabCharts && getDiscoverView() === 'news') targetTab = 'news';
+    // Tapping the Discover nav item resumes the Discover view you last used (Charts, News or Library).
+    if (tab === tabCharts) targetTab = getDiscoverView();
     activateTab(targetTab);
   });
 });
 
 discoverButtons.forEach((btn) => {
   btn.addEventListener('click', () => {
-    const view = btn.dataset.discover === 'news' ? 'news' : 'charts';
+    const view = DISCOVER_VIEWS.includes(btn.dataset.discover) ? btn.dataset.discover : 'charts';
     if (activeTab !== view) activateTab(view);
   });
 });
@@ -2686,7 +2937,28 @@ function setLyricsStatus(iconName, text) {
   lyricsStatusText.innerHTML = `${icon(iconName, 'sm')} ${escapeHtml(text)}`;
 }
 
+/**
+ * One line under the lyrics saying where they come from and what rights they carry (LRCLIB
+ * community lyrics, or the user's own), with a button to add or edit the user's lyrics.
+ */
+function renderLyricsCredit(lyrics) {
+  if (!lyricsCredit) return;
+  const status = lyrics?.status;
+  if (!engine.track || !status || status === 'loading') {
+    lyricsCredit.classList.add('hidden');
+    return;
+  }
+  const rights = lyrics.rights;
+  if (lyricsCreditText) {
+    lyricsCreditText.textContent = rights?.credit || '';
+    lyricsCreditText.title = rights?.label ? `${rights.label}${rights.license && rights.license !== rights.label ? ` (${rights.license})` : ''}` : '';
+  }
+  if (btnLyricsCreditEdit) btnLyricsCreditEdit.textContent = rights?.source === 'user' ? 'Edit your lyrics' : 'Add your lyrics';
+  lyricsCredit.classList.remove('hidden');
+}
+
 function renderLyricsState(lyrics) {
+  renderLyricsCredit(lyrics);
   lineElements = [];
   reelWordElements = [];
   reelWordStates = [];
@@ -2835,10 +3107,12 @@ function renderLyricsState(lyrics) {
           : 'LRCLIB has no lyrics for this release. Try searching another version of the song.'}</p>
         <div class="lyrics-empty-actions">
           <button id="btnSearchLyricsManual" class="btn btn-sm btn-spotify" type="button">${icon('search', 'sm')} Search other versions</button>
+          <button id="btnAddLyricsFromEmpty" class="btn btn-sm btn-ghost" type="button">${icon('file-text', 'sm')} Add your lyrics</button>
           ${fromMic ? `<button id="btnRelistenFromEmpty" class="btn btn-sm btn-ghost" type="button">${icon('mic', 'sm')} Listen again</button>` : ''}
         </div>
       </div>
     `;
+    document.getElementById('btnAddLyricsFromEmpty')?.addEventListener('click', () => openUserLyrics());
     document.getElementById('btnSearchLyricsManual')?.addEventListener('click', () => {
       // Open Search pre-filled with the identified song and run it straight away.
       // The stage collapses to the mini player so the Search tab is actually visible.
@@ -3491,6 +3765,31 @@ btnMakeLyricCard?.addEventListener('click', () => {
   openLyricCard();
 });
 
+// Your lyrics editor: save lyrics the user has rights to, then reload them for the song on screen
+const userLyricsDialog = userLyricsBackdrop ? new UserLyricsDialog({
+  backdrop: userLyricsBackdrop,
+  store: userLyricsStore,
+  notify: (msg, type) => showAlert(msg, type),
+  onSaved: (track) => {
+    if (engine.track && track && engine.track.id === track.id) engine.reloadLyrics();
+  },
+  onClose: () => { if (stageOpen) btnMoreSheet?.focus({ preventScroll: true }); }
+}) : null;
+
+function openUserLyrics() {
+  if (!userLyricsDialog) return;
+  userLyricsDialog.open(engine.track);
+}
+
+btnEditUserLyrics?.addEventListener('click', () => {
+  closeMoreSheet({ restoreFocus: false });
+  openUserLyrics();
+});
+btnLyricsCreditEdit?.addEventListener('click', () => openUserLyrics());
+userLyricsBackdrop?.addEventListener('keydown', (e) => {
+  if (e.key === 'Tab') trapFocus(userLyricsBackdrop, e);
+});
+
 lyricCardBackdrop?.addEventListener('keydown', (e) => {
   if (e.key === 'Tab') trapFocus(lyricCardBackdrop, e);
 });
@@ -3586,6 +3885,8 @@ function isOverlayOpen({ ignoreSheet = false } = {}) {
     || isShown(settingsBackdrop)
     || isShown(shortcutsBackdrop)
     || Boolean(lyricCard?.isOpen)
+    || Boolean(userLyricsDialog?.isOpen)
+    || Boolean(playlistPicker?.isOpen)
     || isShown(micConsentBackdrop)
     || isShown(document.getElementById('authBackdrop'));
 }
@@ -3617,6 +3918,10 @@ window.addEventListener('keydown', (e) => {
       closeShortcuts();
     } else if (lyricCard?.isOpen) {
       lyricCard.close();
+    } else if (userLyricsDialog?.isOpen) {
+      userLyricsDialog.close();
+    } else if (playlistPicker?.isOpen) {
+      playlistPicker.close();
     } else if (isShown(micConsentBackdrop)) {
       micConsentBackdrop.classList.add('hidden');
     } else if (sheetOpen) {
@@ -3685,6 +3990,15 @@ window.addEventListener('keydown', (e) => {
   if ((e.key === 'f' || e.key === 'F') && plainKey) {
     e.preventDefault();
     toggleFullscreen();
+    return;
+  }
+
+  // '>' / '<': next / previous song in the Free music queue
+  if ((e.key === '>' || e.key === '<') && !e.ctrlKey && !e.metaKey && !e.altKey && playQueue.active) {
+    e.preventDefault();
+    if (e.key === '>') playNextInQueue();
+    else playPreviousInQueue();
+    updateQueueControls();
     return;
   }
 
@@ -3948,6 +4262,133 @@ if (settingDebugMode) {
   });
 }
 
+
+// Library backup: one JSON file with songs, artists, playlists and your lyrics (see backup.js).
+// Android saves it to Download/LyricWave (or shares it); browsers download it.
+const libraryBackup = new LibraryBackup({
+  library: libraryCollector.store,
+  playlists: playlistStore,
+  userLyrics: userLyricsStore,
+  exclusive: (fn) => libraryCollector.exclusive(fn)
+});
+const btnBackupLibrary = document.getElementById('btnBackupLibrary');
+const btnRestoreLibrary = document.getElementById('btnRestoreLibrary');
+const restoreLibraryFile = document.getElementById('restoreLibraryFile');
+
+/** The Android app's file bridge (saveFile / shareFile, app 1.3.0+), or null elsewhere. */
+function nativeFileBridge() {
+  try {
+    const bridge = window.LyricWaveNative;
+    return bridge && typeof bridge.shareFile === 'function' ? bridge : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Disables a Settings button and shows `busyText` on it until the returned function is called. */
+function markBusy(btn, busyText) {
+  if (!btn) return () => {};
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = busyText;
+  btn.setAttribute('aria-busy', 'true');
+  return () => {
+    btn.disabled = false;
+    btn.textContent = label;
+    btn.removeAttribute('aria-busy');
+  };
+}
+
+/** UTF-8 text as base64, in chunks so large backups don't overflow the call stack. */
+function textToBase64(text) {
+  const bytes = new TextEncoder().encode(text);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
+async function backupLibrary() {
+  if (!btnBackupLibrary || btnBackupLibrary.disabled) return;
+  const native = nativeFileBridge();
+  // The Android WebView ignores downloads; older app versions have no file bridge
+  if (IS_NATIVE_APP && !native) {
+    showAlert('Update the LyricWave app to back up your library.', 'warning');
+    return;
+  }
+  const done = markBusy(btnBackupLibrary, 'Backing up…');
+  try {
+    const data = await libraryBackup.export();
+    const counts = describeCounts(data.counts);
+    if (!counts) {
+      showAlert('Your library is empty, so there is nothing to back up yet.', 'info');
+      return;
+    }
+    const text = JSON.stringify(data, null, 2);
+    const name = backupFileName();
+    if (native) {
+      const b64 = textToBase64(text);
+      let saved = false;
+      try { saved = native.canSaveFile?.() !== false && native.saveFile?.(b64, name) === true; } catch { saved = false; }
+      if (saved) {
+        showAlert(`Backed up ${counts} to Download/LyricWave.`, 'success');
+      } else {
+        let shared = false;
+        try { shared = native.shareFile(b64, name, 'LyricWave library backup') === true; } catch { shared = false; }
+        showAlert(shared ? 'Pick where to keep your backup.' : 'Couldn’t save the backup on this device.', shared ? 'info' : 'warning');
+      }
+      return;
+    }
+    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    showAlert(`Backed up ${counts}.`, 'success');
+  } catch (err) {
+    console.warn('Library backup failed:', err);
+    showAlert('Couldn’t make the backup on this device.', 'warning');
+  } finally {
+    done();
+  }
+}
+
+async function restoreLibrary(file) {
+  if (!file) return;
+  // Clearing the picker afterwards lets the same file be chosen again
+  const clearPicker = () => { if (restoreLibraryFile) restoreLibraryFile.value = ''; };
+  if (file.size > MAX_BACKUP_BYTES) {
+    showAlert('That file is too large to be a LyricWave backup.', 'warning');
+    clearPicker();
+    return;
+  }
+  const done = markBusy(btnRestoreLibrary, 'Restoring…');
+  try {
+    const result = await libraryBackup.restore(await file.text());
+    const changed = describeCounts(result.added) || describeCounts(result.updated);
+    showAlert(describeRestore(result), changed ? 'success' : 'info');
+    libraryView?.refresh();
+  } catch (err) {
+    console.warn('Library restore failed:', err);
+    showAlert(err instanceof BackupFileError ? err.message : 'Couldn’t restore that backup on this device.', 'warning');
+  } finally {
+    done();
+    clearPicker();
+  }
+}
+
+btnBackupLibrary?.addEventListener('click', backupLibrary);
+btnRestoreLibrary?.addEventListener('click', () => {
+  // Android app versions before 1.3.0 (no file bridge) can't open the file picker either
+  if (IS_NATIVE_APP && !nativeFileBridge()) {
+    showAlert('Update the LyricWave app to restore a backup.', 'warning');
+    return;
+  }
+  restoreLibraryFile?.click();
+});
+restoreLibraryFile?.addEventListener('change', () => restoreLibrary(restoreLibraryFile.files?.[0]));
 
 // "Clear All Data" handler: wipes everything LyricWave keeps on this device.
 async function clearAllLocalData() {

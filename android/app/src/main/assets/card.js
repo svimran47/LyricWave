@@ -10,10 +10,49 @@
  *
  * Lyrics stay their songwriters' copyright, so a card is a short quote with credit, never a whole
  * song: MAX_QUOTE_LINES / MAX_QUOTE_CHARS cap the excerpt and the footer always names the song.
+ * The exceptions are lyrics LyricWave has the rights to show: a song that is itself openly licensed
+ * (an Openverse track whose license allows adaptations, see openLicenseAllowsFullLyrics), or
+ * lyrics the user added as their own, public domain or Creative Commons (user-lyrics.js). Those
+ * cards may quote up to OPEN_QUOTE_LINES / OPEN_QUOTE_CHARS, as much as stays readable, and always
+ * carry the license credit line.
  */
+
+import { openLicenseAllowsFullLyrics } from './types.js';
 
 export const MAX_QUOTE_LINES = 4;
 export const MAX_QUOTE_CHARS = 220;
+export const OPEN_QUOTE_LINES = 12;
+export const OPEN_QUOTE_CHARS = 480;
+
+export const DEFAULT_QUOTE_LIMITS = Object.freeze({ lines: MAX_QUOTE_LINES, chars: MAX_QUOTE_CHARS, open: false });
+export const OPEN_QUOTE_LIMITS = Object.freeze({ lines: OPEN_QUOTE_LINES, chars: OPEN_QUOTE_CHARS, open: true });
+
+/**
+ * Quote caps for a track: longer quotes only when the song's own license allows them, or when the
+ * lyrics on screen are the user's own with open rights (lyricsData.rights.allowsFull).
+ */
+export function quoteLimitsFor(track, lyricsData = null) {
+  if (lyricsData?.rights?.allowsFull === true) return OPEN_QUOTE_LIMITS;
+  return openLicenseAllowsFullLyrics(track?.openTrack?.license) ? OPEN_QUOTE_LIMITS : DEFAULT_QUOTE_LIMITS;
+}
+
+/**
+ * Credit drawn under the footer: the open song's license ("CC BY-SA 3.0 · "Song" by Creator ·
+ * Jamendo") and/or the rights of the user's own lyrics when a card quotes more because of them.
+ */
+export function cardLicenseCredit(track, lyricsData = null) {
+  const parts = [];
+  const ot = track?.openTrack;
+  if (ot?.license) {
+    const work = [track.title ? `“${track.title}”` : '', ot.creator ? `by ${ot.creator}` : ''].filter(Boolean).join(' ');
+    parts.push([ot.licenseLabel || ot.license, work, ot.provider].filter(Boolean).join(' · '));
+  }
+  const rights = lyricsData?.rights;
+  if (rights?.source === 'user' && rights.allowsFull && rights.rights !== 'song' && rights.credit) {
+    parts.push(rights.credit);
+  }
+  return parts.join(' · ');
+}
 
 export const CARD_FORMATS = {
   square: { width: 1080, height: 1080, label: 'Square' },
@@ -95,7 +134,7 @@ export function defaultLineIndex(lines, positionMs) {
  *  - tap anything else: start over with that line
  * @returns {{start: number, end: number, limited: boolean}} limited = the tap was refused by a cap
  */
-export function toggleLineSelection(selection, index, lines) {
+export function toggleLineSelection(selection, index, lines, limits = DEFAULT_QUOTE_LIMITS) {
   const fresh = { start: index, end: index, limited: false };
   if (!selection || selection.start < 0) return fresh;
   const { start, end } = selection;
@@ -109,7 +148,7 @@ export function toggleLineSelection(selection, index, lines) {
     const next = { start: Math.min(start, index), end: Math.max(end, index) };
     const count = next.end - next.start + 1;
     const chars = lines.slice(next.start, next.end + 1).reduce((n, l) => n + l.text.length, 0);
-    if (count > MAX_QUOTE_LINES || chars > MAX_QUOTE_CHARS) return { start, end, limited: true };
+    if (count > limits.lines || chars > limits.chars) return { start, end, limited: true };
     return { ...next, limited: false };
   }
   return fresh;
@@ -203,14 +242,14 @@ export function shareTitle(track) {
  * @param {string[]} texts
  * @returns {string[]}
  */
-export function clampQuote(texts) {
+export function clampQuote(texts, limits = DEFAULT_QUOTE_LIMITS) {
   const out = [];
   let used = 0;
   for (const raw of texts || []) {
     const text = String(raw ?? '').replace(/\s+/g, ' ').trim();
     if (!text) continue;
-    const room = MAX_QUOTE_CHARS - used;
-    if (out.length >= MAX_QUOTE_LINES || room <= 0) break;
+    const room = limits.chars - used;
+    if (out.length >= limits.lines || room <= 0) break;
     if (text.length > room) {
       out.push(text.slice(0, Math.max(1, room - 1)).trimEnd() + '…');
       break;
@@ -336,6 +375,8 @@ function drawBackground(ctx, style, w, h, art, makeCanvas) {
  * @param {string} [opts.style]
  * @param {string} [opts.format]
  * @param {(w: number, h: number) => HTMLCanvasElement} [opts.makeCanvas] for the blur pass
+ * @param {{lines: number, chars: number}} [opts.limits] quote caps (quoteLimitsFor(track))
+ * @param {string} [opts.credit] license credit drawn under the footer (open tracks)
  */
 export function renderLyricCard(ctx, opts) {
   const style = CARD_STYLES[opts.style] || CARD_STYLES[DEFAULT_CARD_STYLE];
@@ -396,7 +437,7 @@ export function renderLyricCard(ctx, opts) {
     lineHeight: style.bar ? 1.38 : 1.2,
     gap: style.bar ? 0.18 : 0.35
   };
-  const texts = clampQuote(opts.lines);
+  const texts = clampQuote(opts.lines, opts.limits || DEFAULT_QUOTE_LIMITS);
   const layout = fitLyricLayout(texts.length ? texts : [' '], box, measurerFor(ctx, 800));
   const size = layout.fontSize;
   const rowH = size * box.lineHeight;
@@ -444,6 +485,16 @@ export function renderLyricCard(ctx, opts) {
   ctx.globalAlpha = 0.85;
   ctx.fillRect(pad, footerY - 40, 72, 6);
   ctx.globalAlpha = 1;
+
+  // License credit for openly licensed songs (CC BY etc. require it on anything shared)
+  if (opts.credit) {
+    ctx.fillStyle = style.metaMuted;
+    ctx.font = font(500, 24);
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    const measureCredit = (s) => ctx.measureText(s).width;
+    ctx.fillText(ellipsize(String(opts.credit), w - pad * 2, measureCredit), pad, h - pad / 2);
+  }
 
   ctx.restore();
   return layout;
@@ -529,6 +580,7 @@ export class LyricCardMaker {
     this.style = readPref(STORAGE_STYLE_KEY, CARD_STYLES, DEFAULT_CARD_STYLE);
     this.format = readPref(STORAGE_FORMAT_KEY, CARD_FORMATS, DEFAULT_CARD_FORMAT);
     this.track = null;
+    this.limits = DEFAULT_QUOTE_LIMITS;
     this.lines = [];
     this.selection = { start: -1, end: -1 };
     this.art = null;
@@ -583,6 +635,8 @@ export class LyricCardMaker {
       return false;
     }
     this.track = track;
+    this.lyricsData = lyricsData;
+    this.limits = quoteLimitsFor(track, lyricsData);
     this.lines = lines;
     const start = defaultLineIndex(lines, positionMs);
     this.selection = { start, end: start };
@@ -640,14 +694,18 @@ export class LyricCardMaker {
       art: this.art,
       style: this.style,
       format: this.format,
+      limits: this.limits,
+      credit: cardLicenseCredit(this.track, this.lyricsData),
       makeCanvas: (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
     });
     const count = this.selection.end - this.selection.start + 1;
     this.canvas.setAttribute('aria-label', `Lyrics card preview: ${this.selectedTexts().join(' / ')}`);
     if (this.hintEl) {
-      this.hintEl.textContent = count >= MAX_QUOTE_LINES
-        ? `${count} lines, the most a card can quote`
-        : `${count} of up to ${MAX_QUOTE_LINES} lines. Tap a neighbouring line to add it.`;
+      const max = this.limits.lines;
+      const openNote = this.limits.open ? ' These lyrics are openly licensed, so their credit goes on the card.' : '';
+      this.hintEl.textContent = (count >= max
+        ? `${count} lines, the most a card can quote.`
+        : `${count} of up to ${max} lines. Tap a neighbouring line to add it.`) + openNote;
     }
     this._scheduleBlob();
   }
@@ -790,9 +848,11 @@ export class LyricCardMaker {
 
   _onLineTap(index) {
     if (!Number.isInteger(index) || index < 0 || index >= this.lines.length) return;
-    const next = toggleLineSelection(this.selection, index, this.lines);
+    const next = toggleLineSelection(this.selection, index, this.lines, this.limits);
     if (next.limited) {
-      this.notify(`A card quotes up to ${MAX_QUOTE_LINES} short lines, with the song credited.`, 'info');
+      this.notify(this.limits.open
+        ? `A card fits up to ${this.limits.lines} lines, with the song and its license credited.`
+        : `A card quotes up to ${MAX_QUOTE_LINES} short lines, with the song credited.`, 'info');
       return;
     }
     this.haptic('light');
