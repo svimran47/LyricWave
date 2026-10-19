@@ -30,6 +30,7 @@ import { ReelVisualizer } from './reel.js';
 import { AudioReactive } from './audio-reactive.js';
 import { translateLyrics, defaultTargetLang, TRANSLATE_LANGUAGES, TranslationQuotaError } from './translate.js';
 import { BeatVisuals } from './visuals.js';
+import { CatDancer, STORAGE_CAT_DANCER_KEY } from './cat-dancer.js';
 import { ProjectMVisualizer, isProjectMSupported } from './projectm-visualizer.js';
 import { LyricCardMaker } from './card.js';
 import { LibraryCollector } from './library.js';
@@ -658,6 +659,15 @@ const beatVisuals = fsVisualsCanvas
   ? new BeatVisuals(fsVisualsCanvas, reelContainer, { minFrameIntervalMs: reel.minFrameIntervalMs })
   : null;
 
+// Orange cat dancer in the stage corner (Settings toggle, off by default; assets load only once enabled).
+let catSongKey = '';
+const reelStageEl = document.getElementById('reelStage');
+const catDancer = reelStageEl ? new CatDancer(reelStageEl, {
+  lineBoxEl: document.getElementById('reelLineBox'),
+  nextLineEl: document.getElementById('reelNextLine'),
+  reducedMotion: () => prefersReducedMotion()
+}) : null;
+
 // Fullscreen projectM (MilkDrop) visualizer: WASM + WebGL 2, loaded the first time fullscreen opens.
 const STORAGE_VISUALIZER_KEY = 'lyricwave_visualizer';
 const STORAGE_VISUALIZER_LIVE_KEY = 'lyricwave_visualizer_live';
@@ -770,7 +780,8 @@ function updateStageTick(tick) {
   const reelState = reel.render(tick.effectiveMs, tick.isPlaying);
   applyReelState(reelState, tick.effectiveMs);
   const projectmOn = Boolean(projectm?.active && projectm.ready);
-  if (beatVisuals?.active || projectmOn) {
+  const catOn = Boolean(catDancer?.active);
+  if (beatVisuals?.active || projectmOn || catOn) {
     // 'pulse' already pulled this tick's beat frame; other styles don't read it, so pull it here.
     let frame = reelState;
     if (reelState.animationStyle !== 'pulse') {
@@ -778,6 +789,7 @@ function updateStageTick(tick) {
     }
     if (beatVisuals?.active) beatVisuals.render(frame, performance.now());
     if (projectmOn) projectm.render(frame, tick.isPlaying);
+    if (catOn) catDancer.render(frame, tick.isPlaying, performance.now(), tick.effectiveMs);
   }
 }
 
@@ -928,6 +940,8 @@ let libraryView = null;
 const engine = new UnifiedSyncEngine({
   onTrackChange: (track) => {
     hasTrack = true;
+    catDancer?.reset();
+    catSongKey = `${track.title || ''}|${track.artists || track.artist || ''}`;
     // The welcome hint has done its job once lyrics are on screen.
     if (firstRunHint && !firstRunHint.classList.contains('hidden')) {
       firstRunHint.classList.add('hidden');
@@ -1031,6 +1045,8 @@ const engine = new UnifiedSyncEngine({
     currentReelLineIndex = -1;
     requestTranslations(lyrics);
     audioReactive.setLyrics(lyrics && lyrics.status === 'synced' ? lyrics.syncedLines : []);
+    // The cat builds this song's routine from its synced lines (chorus lines repeat their moves).
+    catDancer?.setSong(catSongKey, lyrics && lyrics.status === 'synced' ? lyrics.syncedLines : []);
     updateBeatSyncUI();
   },
 
@@ -1051,6 +1067,7 @@ const engine = new UnifiedSyncEngine({
 
     // 2. Update OLED Reel Centered Box
     updateReelLine(lineIndex);
+    catDancer?.setLine(line ? line.text : '');
   },
 
   onTick: (tick) => {
@@ -4229,6 +4246,21 @@ if (settingVisualizer) {
 if (settingVisualizerLive) {
   settingVisualizerLive.checked = visualizerLive;
   settingVisualizerLive.addEventListener('change', (e) => setVisualizerLive(e.target.checked));
+}
+// Dancing cat in the stage corner: off by default.
+const settingCatDancer = document.getElementById('settingCatDancer');
+function setCatDancerEnabled(on) {
+  const enabled = Boolean(on);
+  safeSet(STORAGE_CAT_DANCER_KEY, enabled ? 'true' : 'false');
+  if (settingCatDancer) settingCatDancer.checked = enabled;
+  catDancer?.setEnabled(enabled);
+}
+let catDancerOn = false;
+try { catDancerOn = localStorage.getItem(STORAGE_CAT_DANCER_KEY) === 'true'; } catch {}
+if (catDancerOn) catDancer?.setEnabled(true);
+if (settingCatDancer) {
+  settingCatDancer.checked = catDancerOn;
+  settingCatDancer.addEventListener('change', (e) => setCatDancerEnabled(e.target.checked));
 }
 
 if (settingOffsetSlider) {

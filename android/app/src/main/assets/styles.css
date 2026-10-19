@@ -2822,6 +2822,20 @@ body::before {
   background: #000000;
 }
 
+/* Dancing cat (cat-dancer.js): bottom-left corner, under the line box (z-index 5), sized in JS to the
+   free space below the current line so it never covers it. */
+.cat-dancer-canvas {
+  position: absolute;
+  left: max(8px, var(--gutter, 12px));
+  bottom: 6px;
+  z-index: 4;
+  pointer-events: none;
+  image-rendering: auto;
+}
+.cat-dancer-canvas.hidden {
+  display: none;
+}
+
 .reel-canvas {
   position: absolute;
   top: 0;
