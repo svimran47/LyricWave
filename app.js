@@ -663,6 +663,7 @@ const beatVisuals = fsVisualsCanvas
 const reelStageEl = document.getElementById('reelStage');
 const catDancer = reelStageEl ? new CatDancer(reelStageEl, {
   lineBoxEl: document.getElementById('reelLineBox'),
+  nextLineEl: document.getElementById('reelNextLine'),
   reducedMotion: () => prefersReducedMotion()
 }) : null;
 

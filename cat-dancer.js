@@ -75,6 +75,7 @@ export class CatDancer {
   constructor(stageEl, opts = {}) {
     this.stage = stageEl;
     this.lineBox = opts.lineBoxEl || null;
+    this.nextLine = opts.nextLineEl || null;
     this.reducedMotion = opts.reducedMotion || (() => false);
     this.fetchImpl = opts.fetchImpl || ((u) => fetch(u));
     this.enabled = false;
@@ -155,9 +156,11 @@ export class CatDancer {
     const stageRect = this.stage.getBoundingClientRect();
     if (!stageRect.height) return false;
     let free = stageRect.height * MAX_STAGE_FRACTION;
-    if (this.lineBox) {
-      const box = this.lineBox.getBoundingClientRect();
-      free = Math.min(free, stageRect.bottom - box.bottom - 8);
+    // Stay below the line box and the next-line hint under it (on phones the hint spans the width).
+    for (const el of [this.lineBox, this.nextLine]) {
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      if (r.height > 0) free = Math.min(free, stageRect.bottom - r.bottom - 8);
     }
     const h = Math.floor(free);
     if (h < MIN_HEIGHT_PX) return false;
