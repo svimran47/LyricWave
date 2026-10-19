@@ -1,6 +1,5 @@
 {
   "version": 1,
-  "source": "Dancing Cat Handoff artifact",
   "moves": [
     {
       "name": "hub",
@@ -14,6 +13,20 @@
       "file": "lean.webp",
       "frames": 12,
       "w": 174,
+      "h": 300
+    },
+    {
+      "name": "sway",
+      "file": "sway.webp",
+      "frames": 4,
+      "w": 189,
+      "h": 300
+    },
+    {
+      "name": "arms",
+      "file": "arms.webp",
+      "frames": 8,
+      "w": 119,
       "h": 300
     }
   ]

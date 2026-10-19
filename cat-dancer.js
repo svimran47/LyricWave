@@ -25,7 +25,9 @@ const MAX_LOOP_MS = 4200;
 const MIN_HEIGHT_PX = 72;
 const MAX_STAGE_FRACTION = 0.34;
 const FADE_MS = 160;
-const VOCAL_WORDS = /\b(oh+|ooh+|yeah|hey|woah|whoa|baby|la|na)\b|!/i;
+const BODY_FRACTION = 0.9; // the cat fills 90% of the canvas height; the rest is room for the beat hop
+const VOCAL_WORDS = /\b(oh+|ooh+|yeah|hey|woah|whoa)\b|!/i;
+const VOCAL_MOVES = new Set(['climax', 'step', 'arms']);
 
 /** Duration of one boomerang loop in ms for a bpm (0 / bad values -> DEFAULT_BPM). */
 export function loopDurationMs(bpm) {
@@ -48,8 +50,9 @@ export function frameAt(elapsedMs, loopMs, frames) {
  * @param {string[]} available move names present in the manifest
  * @param {number} counter increments every loop, rotates through the groove moves deterministically
  * @param {boolean} playing
+ * @param {string|null} prev the move that just played; never repeated back to back while dancing
  */
-export function chooseMove(frame, lineText, available, counter = 0, playing = true) {
+export function chooseMove(frame, lineText, available, counter = 0, playing = true, prev = null) {
   const has = (m) => available.includes(m);
   const first = (...ms) => ms.find(has);
   const idle = first('hub', 'idle') || available[0] || null;
@@ -57,14 +60,34 @@ export function chooseMove(frame, lineText, available, counter = 0, playing = tr
   const energy = Number(frame?.energy) || 0;
   const vocal = Number(frame?.vocal) || 0;
   const text = typeof lineText === 'string' ? lineText.trim() : '';
-  if (vocal > 0.75 || (text && VOCAL_WORDS.test(text))) {
-    const v = first(energy > 0.7 ? 'climax' : 'step', 'arms', 'step');
-    if (v) return v;
-  }
-  if (energy < 0.12 && !text) return idle;
-  const groove = ['sway', 'arms', 'lean', 'step'].filter(has);
+  // No "quiet -> stand still" rule: the lyric-rhythm signal drops to 0 between lines, and a loop
+  // boundary landing in that gap made the cat stand around. While music plays, it dances.
+  // Every move joins the rotation (the hub pose too, as a "bounce"), so a short set still varies.
+  const groove = ['sway', 'arms', 'lean', 'step', 'hub'].filter(has);
   if (!groove.length) return idle;
-  return groove[Math.abs(counter) % groove.length];
+  let pick = groove[Math.abs(counter) % groove.length];
+  // A shout gets a vocal move, but never two loops running: many lines say "oh" or "yeah".
+  if ((vocal > 0.75 || (text && VOCAL_WORDS.test(text))) && !VOCAL_MOVES.has(prev)) {
+    pick = first(energy > 0.7 ? 'climax' : 'step', 'arms', 'lean') || pick;
+  }
+  if (pick === prev && groove.length > 1) {
+    pick = groove[(groove.indexOf(pick) + 1) % groove.length];
+  }
+  return pick;
+}
+
+/**
+ * Per-tick body motion on top of the frames: a hop on each beat, a small tilt that alternates
+ * beat to beat, scaled by energy. Pure, so it can be tested.
+ * @returns {{hop:number, tilt:number}} hop as a fraction of height (0..0.08), tilt in radians
+ */
+export function beatMotion(frame, beatCount) {
+  const beat = Math.max(0, Math.min(1, Number(frame?.beat) || 0));
+  const energy = Math.max(0, Math.min(1, Number(frame?.energy) || 0));
+  const hop = beat * (0.035 + 0.045 * energy);
+  const side = beatCount % 2 === 0 ? 1 : -1;
+  const tilt = side * (0.02 + 0.06 * energy) * (0.4 + 0.6 * beat);
+  return { hop, tilt };
 }
 
 export class CatDancer {
@@ -88,6 +111,9 @@ export class CatDancer {
     this.lineText = '';
     this.lastFrameIdx = -1;
     this.fade = null;
+    this.mirror = false;
+    this.beatCount = 0;
+    this._lastBeat = 0;
     this.canvas = null;
     this.ctx = null;
     this._lastLayout = 0;
@@ -164,7 +190,8 @@ export class CatDancer {
     }
     const h = Math.floor(free);
     if (h < MIN_HEIGHT_PX) return false;
-    const w = Math.round(h * (move.w / move.h));
+    // Extra width so the beat tilt never clips the paws.
+    const w = Math.round(h * BODY_FRACTION * (move.w / move.h) * 1.25);
     const dpr = Math.min(2, (typeof window !== 'undefined' && window.devicePixelRatio) || 1);
     const pw = Math.round(w * dpr);
     const ph = Math.round(h * dpr);
@@ -192,10 +219,12 @@ export class CatDancer {
       // Loop boundary: pick the next move and the tempo for this loop.
       const prev = this.current;
       this.current = reduce ? (names.includes('hub') ? 'hub' : names[0])
-        : chooseMove(frame, this.lineText, names, this.counter++, playing);
+        : chooseMove(frame, this.lineText, names, this.counter++, playing, prev);
+      // Mirror every other loop so even a repeated move reads as a new step.
+      this.mirror = reduce ? false : !this.mirror;
       // Each move starts from its own pose, so blend out of the previous move's end frame briefly.
       this.fade = prev && prev !== this.current && !reduce && this.moves[prev]
-        ? { move: this.moves[prev], until: now + FADE_MS } : null;
+        ? { move: this.moves[prev], until: now + FADE_MS, mirror: !this.mirror } : null;
       this.loopMs = loopDurationMs(frame?.bpm);
       this.loopStart = now;
       this.lastFrameIdx = -1;
@@ -211,22 +240,37 @@ export class CatDancer {
     const idx = reduce || !playing ? 0 : frameAt(now - this.loopStart, this.loopMs, move.frames);
     const fading = Boolean(this.fade && now < this.fade.until);
     if (!fading) this.fade = null;
-    if (idx === this.lastFrameIdx && !fading) return;
+    // Count beats on the rising edge of the beat envelope (drives the alternating tilt).
+    const beat = Number(frame?.beat) || 0;
+    if (beat > 0.6 && this._lastBeat <= 0.3) this.beatCount++;
+    this._lastBeat = beat;
+    const moving = playing && !reduce;
+    if (idx === this.lastFrameIdx && !fading && !moving) return;
     this.lastFrameIdx = idx;
+    const { hop, tilt } = moving ? beatMotion(frame, this.beatCount) : { hop: 0, tilt: 0 };
     const ctx = this.ctx;
     const cw = this.canvas.width;
     const ch = this.canvas.height;
     ctx.clearRect(0, 0, cw, ch);
+    const draw = (m, frameIdx, mirror, alpha) => {
+      const bh = ch * BODY_FRACTION;              // headroom above the body for the hop
+      const bw = bh * (m.w / m.h);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.translate(cw / 2, ch);                   // pivot at the feet
+      ctx.rotate(tilt);
+      ctx.translate(0, -hop * ch);
+      if (mirror) ctx.scale(-1, 1);
+      ctx.drawImage(m.img, frameIdx * m.w, 0, m.w, m.h, -bw / 2, -bh, bw, bh);
+      ctx.restore();
+    };
     if (fading) {
       const k = 1 - (this.fade.until - now) / FADE_MS;
-      const pm = this.fade.move;
-      const pw = Math.round(ch * (pm.w / pm.h));
-      ctx.globalAlpha = 1 - k;
-      ctx.drawImage(pm.img, 0, 0, pm.w, pm.h, (cw - pw) / 2, 0, pw, ch);
-      ctx.globalAlpha = k;
+      draw(this.fade.move, 0, this.fade.mirror, 1 - k);
+      draw(move, idx, this.mirror, k);
+    } else {
+      draw(move, idx, this.mirror, 1);
     }
-    ctx.drawImage(move.img, idx * move.w, 0, move.w, move.h, 0, 0, cw, ch);
-    ctx.globalAlpha = 1;
   }
 }
 
