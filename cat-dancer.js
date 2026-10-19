@@ -5,8 +5,12 @@
  * Every move is a boomerang (first frame == last frame, near the shared "hub" pose), so moves only change
  * at a loop boundary and never jump.
  *
+ *  - Song choreography: when a song has synced lyrics, buildChoreography() turns them into a routine for
+ *    that song: one move per lyric line, chosen from the line itself (shouts -> vocal moves, long held
+ *    lines -> slow moves, instrumental gaps -> bounce) in an order seeded by the song, and every repeated
+ *    line (the chorus) gets the same move and facing each time it comes back. Moves change on the line.
+ *  - Without synced lyrics it improvises from the beat signal (chooseMove).
  *  - Driven by the same signal as the reel: audioReactive.getFrame() -> { beat, vocal, energy, bpm }.
- *  - Lyric lines nudge the choice (shouts / "oh" / "yeah" -> the vocal moves, empty lines -> idle).
  *  - One loop lasts LOOP_BEATS beats at the current bpm (120 bpm when unknown), clamped to a sane speed.
  *  - prefers-reduced-motion: shows the still hub pose instead of animating.
  *  - Sized from the free space below the lyric line box, so it never covers the current line;
@@ -90,6 +94,95 @@ export function beatMotion(frame, beatCount) {
   return { hop, tilt };
 }
 
+/** Small stable string hash (FNV-1a) so a song always gets the same routine. */
+export function songSeed(key) {
+  let h = 0x811c9dc5;
+  const s = String(key || '');
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
+
+function normLine(text) {
+  return String(text || '').toLowerCase().replace(/[^\p{L}\p{N} ]+/gu, '').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Build a song's routine from its synced lyrics.
+ * @param {Array<{timeMs:number, text:string}>} lines synced lyric lines
+ * @param {string[]} available move names in the manifest
+ * @param {string} songKey e.g. "title|artist"; seeds the move order so each song dances differently
+ * @returns {Array<{startMs:number, endMs:number, move:string, mirror:boolean}>} [] when it can't build one
+ */
+export function buildChoreography(lines, available, songKey = '') {
+  if (!Array.isArray(lines) || lines.length === 0 || !Array.isArray(available)) return [];
+  const has = (m) => available.includes(m);
+  const pool = ['sway', 'arms', 'lean', 'step', 'climax', 'hub'].filter(has);
+  if (pool.length < 2) return [];
+  const seed = songSeed(songKey);
+  // Song-specific order of the groove moves (seeded Fisher-Yates).
+  const order = pool.filter((m) => m !== 'hub');
+  let r = seed || 1;
+  for (let i = order.length - 1; i > 0; i--) {
+    r = Math.imul(r ^ (r >>> 15), 2246822507) >>> 0;
+    const j = r % (i + 1);
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  if (!order.length) order.push(pool[0]);
+  const idle = has('hub') ? 'hub' : order[0];
+  const vocalMove = ['climax', 'arms', 'step'].find(has) || order[0];
+  const slowMove = ['sway', 'lean'].find(has) || order[0];
+  const remembered = new Map(); // normalized line -> { move, mirror }
+  const steps = [];
+  let prev = null;
+  let prevMirror = false;
+  let next = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const ln = lines[i] || {};
+    const startMs = Number(ln.timeMs);
+    if (!Number.isFinite(startMs)) continue;
+    const nextStart = Number(lines[i + 1]?.timeMs);
+    const endMs = Number.isFinite(nextStart) && nextStart > startMs ? nextStart : startMs + 4000;
+    const text = typeof ln.text === 'string' ? ln.text.trim() : '';
+    const key = normLine(text);
+    let move;
+    let mirror;
+    if (!key) {
+      move = idle;                                   // instrumental gap: bounce in place
+      mirror = !prevMirror;
+    } else if (remembered.has(key)) {
+      ({ move, mirror } = remembered.get(key));      // chorus / repeated line: same move every time
+    } else {
+      if (VOCAL_WORDS.test(text)) move = vocalMove;
+      else if (endMs - startMs > 6000) move = slowMove;
+      else move = order[(next++ + (seed % order.length)) % order.length];
+      if (move === prev && order.length > 1) move = order[(order.indexOf(move) + 1) % order.length];
+      mirror = ((seed >>> 4) + i) % 2 === 1;
+      remembered.set(key, { move, mirror });
+    }
+    if (move === prev && mirror === prevMirror) mirror = !mirror; // same move twice: face the other way
+    steps.push({ startMs, endMs, move, mirror });
+    prev = move;
+    prevMirror = mirror;
+  }
+  return steps;
+}
+
+/** Index of the routine step playing at positionMs, or -1 (before the first line / no routine). */
+export function stepIndexAt(steps, positionMs) {
+  if (!Array.isArray(steps) || !steps.length || !Number.isFinite(positionMs)) return -1;
+  let lo = 0;
+  let hi = steps.length - 1;
+  let found = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (steps[mid].startMs <= positionMs) { found = mid; lo = mid + 1; } else hi = mid - 1;
+  }
+  return found;
+}
+
 export class CatDancer {
   /**
    * @param {HTMLElement} stageEl the element the canvas is placed in (position: relative)
@@ -110,6 +203,9 @@ export class CatDancer {
     this.counter = 0;
     this.lineText = '';
     this.lastFrameIdx = -1;
+    this.steps = [];
+    this.stepIdx = -1;
+    this._song = null;
     this.fade = null;
     this.mirror = false;
     this.beatCount = 0;
@@ -142,6 +238,24 @@ export class CatDancer {
     this.current = null;
     this.counter = 0;
     this.lineText = '';
+    this.steps = [];
+    this.stepIdx = -1;
+    this._song = null;
+  }
+
+  /**
+   * The song's synced lyrics (from the engine's track/lyrics callbacks). The routine is built on the
+   * next render, once the move sheets are known; [] or unsynced lyrics -> improvise from the beat.
+   */
+  setSong(songKey, syncedLines) {
+    this._song = { key: String(songKey || ''), lines: Array.isArray(syncedLines) ? syncedLines : [] };
+    this.steps = [];
+    this.stepIdx = -1;
+  }
+
+  /** The routine currently in use (for tests / diagnostics). */
+  get routine() {
+    return this.steps;
   }
 
   load() {
@@ -210,21 +324,39 @@ export class CatDancer {
    * @param {object|null} frame
    * @param {boolean} playing
    * @param {number} now performance.now()
+   * @param {number} [positionMs] song position (tick.effectiveMs), drives the song routine
    */
-  render(frame, playing, now) {
+  render(frame, playing, now, positionMs) {
     if (!this.active || !this.canvas) return;
     const names = Object.keys(this.moves);
     const reduce = this.reducedMotion();
-    if (!this.current || now - this.loopStart >= this.loopMs) {
-      // Loop boundary: pick the next move and the tempo for this loop.
+    if (this._song) {
+      this.steps = buildChoreography(this._song.lines, names, this._song.key);
+      this._song = null;
+    }
+    // Song routine: the move changes with the lyric line, right on the line's start.
+    const stepIdx = playing && !reduce ? stepIndexAt(this.steps, positionMs) : -1;
+    const newStep = stepIdx >= 0 && stepIdx !== this.stepIdx;
+    if (newStep || !this.current || now - this.loopStart >= this.loopMs) {
       const prev = this.current;
-      this.current = reduce ? (names.includes('hub') ? 'hub' : names[0])
-        : chooseMove(frame, this.lineText, names, this.counter++, playing, prev);
-      // Mirror every other loop so even a repeated move reads as a new step.
-      this.mirror = reduce ? false : !this.mirror;
+      const prevMirror = this.mirror;
+      if (reduce) {
+        this.current = names.includes('hub') ? 'hub' : names[0];
+        this.mirror = false;
+      } else if (stepIdx >= 0) {
+        const step = this.steps[stepIdx];
+        // A new line starts its own move and facing; a line long enough to loop again flips facing.
+        this.current = this.moves[step.move] ? step.move : this.current || names[0];
+        this.mirror = newStep ? step.mirror : !this.mirror;
+      } else {
+        // No routine (no synced lyrics, or before the first line): improvise from the beat.
+        this.current = chooseMove(frame, this.lineText, names, this.counter++, playing, prev);
+        this.mirror = !this.mirror; // mirror every other loop so a repeated move reads as a new step
+      }
+      this.stepIdx = stepIdx;
       // Each move starts from its own pose, so blend out of the previous move's end frame briefly.
-      this.fade = prev && prev !== this.current && !reduce && this.moves[prev]
-        ? { move: this.moves[prev], until: now + FADE_MS, mirror: !this.mirror } : null;
+      this.fade = prev && (prev !== this.current || prevMirror !== this.mirror) && !reduce && this.moves[prev]
+        ? { move: this.moves[prev], until: now + FADE_MS, mirror: prevMirror } : null;
       this.loopMs = loopDurationMs(frame?.bpm);
       this.loopStart = now;
       this.lastFrameIdx = -1;

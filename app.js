@@ -660,6 +660,7 @@ const beatVisuals = fsVisualsCanvas
   : null;
 
 // Orange cat dancer in the stage corner (Settings toggle, off by default; assets load only once enabled).
+let catSongKey = '';
 const reelStageEl = document.getElementById('reelStage');
 const catDancer = reelStageEl ? new CatDancer(reelStageEl, {
   lineBoxEl: document.getElementById('reelLineBox'),
@@ -788,7 +789,7 @@ function updateStageTick(tick) {
     }
     if (beatVisuals?.active) beatVisuals.render(frame, performance.now());
     if (projectmOn) projectm.render(frame, tick.isPlaying);
-    if (catOn) catDancer.render(frame, tick.isPlaying, performance.now());
+    if (catOn) catDancer.render(frame, tick.isPlaying, performance.now(), tick.effectiveMs);
   }
 }
 
@@ -940,6 +941,7 @@ const engine = new UnifiedSyncEngine({
   onTrackChange: (track) => {
     hasTrack = true;
     catDancer?.reset();
+    catSongKey = `${track.title || ''}|${track.artists || track.artist || ''}`;
     // The welcome hint has done its job once lyrics are on screen.
     if (firstRunHint && !firstRunHint.classList.contains('hidden')) {
       firstRunHint.classList.add('hidden');
@@ -1043,6 +1045,8 @@ const engine = new UnifiedSyncEngine({
     currentReelLineIndex = -1;
     requestTranslations(lyrics);
     audioReactive.setLyrics(lyrics && lyrics.status === 'synced' ? lyrics.syncedLines : []);
+    // The cat builds this song's routine from its synced lines (chorus lines repeat their moves).
+    catDancer?.setSong(catSongKey, lyrics && lyrics.status === 'synced' ? lyrics.syncedLines : []);
     updateBeatSyncUI();
   },
 

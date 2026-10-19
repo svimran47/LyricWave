@@ -4,7 +4,7 @@
 
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import {
-  CatDancer, chooseMove, beatMotion, frameAt, loopDurationMs, DEFAULT_BPM, LOOP_BEATS, MANIFEST_URL, STORAGE_CAT_DANCER_KEY
+  CatDancer, chooseMove, beatMotion, buildChoreography, stepIndexAt, songSeed, frameAt, loopDurationMs, DEFAULT_BPM, LOOP_BEATS, MANIFEST_URL, STORAGE_CAT_DANCER_KEY
 } from './cat-dancer.js';
 
 let passed = 0;
@@ -97,6 +97,44 @@ assert(/catDancer\.render\(frame, tick\.isPlaying/.test(app), 'cat renders from 
 assert(/catDancer\?\.setLine\(/.test(app), 'cat hears line changes');
 assert(/catDancer\?\.reset\(\)/.test(app), 'cat resets on track change');
 assert(/localStorage\.getItem\(STORAGE_CAT_DANCER_KEY\) === 'true'/.test(app), 'cat stays off unless the user turned it on');
+
+
+// Song choreography from synced lyrics
+console.log('--- Testing song choreography ---');
+const moves4 = ['hub', 'lean', 'sway', 'arms'];
+const song = [
+  { timeMs: 0, text: '' },
+  { timeMs: 4000, text: 'Like the legend of the phoenix' },
+  { timeMs: 8000, text: 'All ends with beginnings' },
+  { timeMs: 12000, text: "We're up all night to get lucky" },
+  { timeMs: 16000, text: "We're up all night to get lucky" },
+  { timeMs: 20000, text: 'Oh yeah!' },
+  { timeMs: 24000, text: 'What keeps the planet spinning' },
+  { timeMs: 28000, text: "We're up all night to get lucky" },
+  { timeMs: 40000, text: 'The present has no rhythm, held for a long time' },
+  { timeMs: 41000, text: '' }
+];
+const routine = buildChoreography(song, moves4, 'Get Lucky|Daft Punk');
+assert(routine.length === song.length, 'one routine step per lyric line');
+assert(routine.every((st) => moves4.includes(st.move)), 'routine only uses moves that exist');
+assert(routine[0].move === 'hub', 'instrumental intro -> bounce in place');
+assert(routine[3].move === routine[7].move, 'chorus line gets the same move every time it comes back');
+assert(routine[3].mirror === routine[7].mirror, 'chorus line keeps the same facing when it comes back');
+assert(routine[4].move === routine[3].move && routine[4].mirror !== routine[3].mirror, 'a line sung twice in a row repeats the move facing the other way');
+assert(routine[5].move === 'arms' || routine[4].move === 'arms', 'a shouted line gets the vocal move (unless the line before already did it)');
+assert(buildChoreography([{ timeMs: 0, text: 'calm verse line' }, { timeMs: 3000, text: 'Hey!' }], moves4, 'Song B|X')[1].move === 'arms', 'a shout after a calm line gets the vocal move');
+assert(routine[8].move === 'sway' || routine[8].move === 'lean', 'a long held line gets a slow move');
+assert(new Set(routine.map((st) => st.move)).size >= 3, 'routine mixes at least 3 moves');
+const routineAgain = buildChoreography(song, moves4, 'Get Lucky|Daft Punk');
+assert(JSON.stringify(routine) === JSON.stringify(routineAgain), 'same song -> same routine every time');
+const other = buildChoreography(song, moves4, 'Another Song|Someone Else');
+assert(JSON.stringify(other) !== JSON.stringify(routine), 'a different song gets a different routine');
+assert(songSeed('a') !== songSeed('b') && songSeed('a') === songSeed('a'), 'song seed is stable and distinct');
+assert(buildChoreography([], moves4, 'x').length === 0 && buildChoreography(song, ['hub'], 'x').length === 0, 'no lines or one move -> no routine (improvise instead)');
+assert(stepIndexAt(routine, -5) === -1 && stepIndexAt(routine, 0) === 0, 'step lookup before / at the first line');
+assert(stepIndexAt(routine, 13000) === 3 && stepIndexAt(routine, 99999) === routine.length - 1, 'step lookup mid-song and after the end');
+assert(/catDancer\?\.setSong\(catSongKey,/.test(app), 'app hands each song\'s synced lyrics to the cat');
+assert(/catDancer\.render\(frame, tick\.isPlaying, performance\.now\(\), tick\.effectiveMs\)/.test(app), 'cat follows the song position');
 
 // Packaging: offline cache + APK
 const sw = readFileSync('sw.js', 'utf8');
