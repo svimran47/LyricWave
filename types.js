@@ -15,7 +15,109 @@
  * @property {boolean} isPlaying - True if playing, false if paused
  * @property {string} [source] - Name of origin source (e.g. 'spotify', 'mic', 'search', 'lastfm')
  * @property {string} [playbackType] - 'track' | 'episode' | 'ad' | 'none'
+ * @property {string} stableId - Same song, same id across sources and sessions:
+ *   'mb:<recording MBID>', else 'isrc:<ISRC>', else 'key:<artist>__<title>' (see stableTrackId)
+ * @property {string} [mbid] - MusicBrainz recording MBID (set by the source or by the library collector)
+ * @property {string} [isrc] - International Standard Recording Code, upper case without dashes
+ * @property {string} [artistMbid] - MusicBrainz artist MBID of the main artist
+ * @property {OpenTrackInfo} [openTrack] - Set for openly licensed, playable tracks (Openverse);
+ *   the license credit must be shown wherever the track plays. stableId is then 'ov:<Openverse id>'.
  */
+
+/**
+ * @typedef {Object} OpenTrackInfo
+ * @property {string} openverseId
+ * @property {string} audioUrl - the full openly licensed audio file
+ * @property {string} license - 'CC0-1.0', 'PDM' or 'CC-BY-SA-3.0' style code
+ * @property {string} licenseLabel - 'CC BY-SA 3.0' style label for people
+ * @property {string} licenseUrl
+ * @property {string} attribution - credit line supplied by Openverse
+ * @property {string} creator
+ * @property {string} creatorUrl
+ * @property {string} landingUrl - the track's page at its host (Jamendo, Freesound, Wikimedia...)
+ * @property {string} provider - host name for people, e.g. 'Jamendo'
+ * @property {boolean} commercialOk
+ */
+
+const MBID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Lower-case MusicBrainz id, or '' when the value isn't a valid MBID. */
+export function normalizeMbid(value) {
+  const s = String(value || '').trim().toLowerCase();
+  return MBID_RE.test(s) ? s : '';
+}
+
+/** Upper-case ISRC without spaces or dashes ("US-RC1-76-07839" -> "USRC17607839"), or ''. */
+export function normalizeIsrc(value) {
+  const s = String(value || '').replace(/[\s-]/g, '').toUpperCase();
+  return /^[A-Z]{2}[A-Z0-9]{3}\d{7}$/.test(s) ? s : '';
+}
+
+/** Loose "artist__title" key that ignores case, punctuation, "(feat. X)" and "(Remastered)" tags. */
+export function trackMatchKey(artist, title) {
+  const norm = (v) => String(v || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s*[([][^)\]]*[)\]]/g, ' ')
+    .replace(/\s+(?:feat\.?|ft\.?|featuring)\s.*$/, '')
+    .replace(/\s+-\s+.*(?:remaster(?:ed)?|version|edit|mix|live)\b.*$/, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+  return `${norm(artist)}__${norm(title)}`;
+}
+
+/** Lower-case Openverse id (a UUID), or ''. */
+export function normalizeOpenverseId(value) {
+  return normalizeMbid(value);
+}
+
+const httpsUrl = (v) => (/^https:\/\/[^\s"'<>]+$/i.test(String(v || '').trim()) ? String(v).trim() : '');
+
+/** Copy of an OpenTrackInfo with only known fields, strings trimmed and non-https URLs dropped; null if invalid. */
+export function normalizeOpenTrackInfo(info) {
+  if (!info || typeof info !== 'object') return null;
+  const openverseId = normalizeOpenverseId(info.openverseId);
+  const audioUrl = httpsUrl(info.audioUrl);
+  const license = String(info.license || '').trim();
+  if (!openverseId || !audioUrl || !license) return null;
+  const text = (v, max = 400) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
+  return {
+    openverseId,
+    audioUrl,
+    license: text(license, 40),
+    licenseLabel: text(info.licenseLabel || license, 40),
+    licenseUrl: httpsUrl(info.licenseUrl),
+    attribution: text(info.attribution),
+    creator: text(info.creator, 200),
+    creatorUrl: httpsUrl(info.creatorUrl),
+    landingUrl: httpsUrl(info.landingUrl),
+    provider: text(info.provider, 60),
+    commercialOk: info.commercialOk === true
+  };
+}
+
+/**
+ * Whether a track's own license lets a lyrics card quote more than a short excerpt: public domain,
+ * CC0 and Creative Commons licenses that allow adaptations (BY, BY-SA, BY-NC, BY-NC-SA).
+ * No-derivatives, sampling and unknown licenses keep the short-quote rule.
+ */
+export function openLicenseAllowsFullLyrics(code) {
+  const c = String(code || '').trim().toUpperCase();
+  return c === 'CC0-1.0' || c === 'PDM' || /^CC-BY(-SA|-NC|-NC-SA)?-\d+(\.\d+)?$/.test(c);
+}
+
+/** Stable id for a track: Openverse id for open tracks, else MusicBrainz recording, ISRC, then the artist + title key. */
+export function stableTrackId(track) {
+  if (!track) return '';
+  const ov = normalizeOpenverseId(track.openTrack?.openverseId);
+  if (ov) return `ov:${ov}`;
+  const mbid = normalizeMbid(track.mbid);
+  if (mbid) return `mb:${mbid}`;
+  const isrc = normalizeIsrc(track.isrc);
+  if (isrc) return `isrc:${isrc}`;
+  return `key:${trackMatchKey(track.artist || track.artists, track.title)}`;
+}
 
 /**
  * Validates and normalizes an object to ensure it conforms to the NowPlaying interface.
@@ -94,6 +196,15 @@ export function normalizeNowPlaying(data) {
   if (data.lrclibId) {
     res.lrclibId = data.lrclibId;
   }
+  const mbid = normalizeMbid(data.mbid || data.recordingMbid);
+  if (mbid) res.mbid = mbid;
+  const isrc = normalizeIsrc(data.isrc);
+  if (isrc) res.isrc = isrc;
+  const artistMbid = normalizeMbid(data.artistMbid);
+  if (artistMbid) res.artistMbid = artistMbid;
+  const openTrack = normalizeOpenTrackInfo(data.openTrack);
+  if (openTrack) res.openTrack = openTrack;
+  res.stableId = stableTrackId(res);
 
   return res;
 }

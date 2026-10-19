@@ -213,6 +213,7 @@ export class AudDProvider extends RecognitionProvider {
         timecode: target.timecode || null,
         spotifyTrackId,
         appleMusicId: target.apple_music?.id || null,
+        isrc: target.apple_music?.isrc || target.spotify?.external_ids?.isrc || target.deezer?.isrc || null,
         deezerId: target.deezer?.id || null
       }
     };

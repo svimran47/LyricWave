@@ -7,6 +7,8 @@
  * and manages user offset calibration.
  */
 
+import { openAppDB, LYRICS_STORE } from './db.js';
+
 const LRCLIB_GET_URL = 'https://lrclib.net/api/get';
 const LRCLIB_SEARCH_URL = 'https://lrclib.net/api/search';
 const LRCLIB_HEADERS = {
@@ -17,35 +19,13 @@ const STORAGE_CACHE_PREFIX = 'lyricwave_lrc_';
 
 // 30 days expiry in milliseconds (30 * 24 * 60 * 60 * 1000)
 const IDB_CACHE_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
-const DB_NAME = 'LyricWaveDB';
-const DB_VERSION = 1;
-const STORE_NAME = 'lyrics';
+const STORE_NAME = LYRICS_STORE;
 
 /**
- * Open or upgrade LyricWave IndexedDB instance
+ * Open LyricWaveDB (shared with the Library, see db.js)
  */
 function openLyricsDB() {
-  if (typeof indexedDB === 'undefined') return Promise.resolve(null);
-  return new Promise((resolve) => {
-    try {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
-      request.onupgradeneeded = (e) => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME, { keyPath: 'key' });
-        }
-      };
-      request.onsuccess = () => {
-        const db = request.result;
-        // Let "Clear All Data" (deleteDatabase) proceed instead of being blocked.
-        db.onversionchange = () => db.close();
-        resolve(db);
-      };
-      request.onerror = () => resolve(null);
-    } catch {
-      resolve(null);
-    }
-  });
+  return openAppDB();
 }
 
 /**
@@ -227,9 +207,54 @@ export function parseLRC(lrcText) {
 }
 
 /**
- * Fetch lyrics from LRCLIB with multi-tier fallback (Exact GET -> Cleaned GET -> Search API)
+ * Rights for lyrics that come from LRCLIB. Its database is openly shared, but the lyrics stay
+ * their songwriters' copyright, so they are shown with this credit and cards keep the short quote.
+ */
+export const LRCLIB_RIGHTS = Object.freeze({
+  source: 'lrclib',
+  rights: 'community',
+  license: 'unverified',
+  licenseUrl: '',
+  label: 'Community lyrics',
+  allowsFull: false,
+  credit: 'Lyrics from LRCLIB community; rights stay with the songwriters'
+});
+
+/** Copy of an LRCLIB result with LRCLIB_RIGHTS attached when it has lyrics. */
+export function withLrclibRights(result) {
+  if (!result || result.rights || (result.status !== 'synced' && result.status !== 'plain')) return result;
+  return { ...result, rights: LRCLIB_RIGHTS };
+}
+
+let userLyricsProvider = null;
+
+/**
+ * Lyrics people added themselves (user-lyrics.js) take priority over LRCLIB. The provider gets
+ * the track and resolves lyricsData or null; app.js registers UserLyricsStore.lyricsFor.
+ */
+export function setUserLyricsProvider(provider) {
+  userLyricsProvider = typeof provider === 'function' ? provider : null;
+}
+
+/**
+ * Lyrics for a track: the user's own lyrics when they saved some, else LRCLIB (with its rights).
  */
 export async function fetchLyrics(track) {
+  if (userLyricsProvider && track && track.title) {
+    try {
+      const own = await userLyricsProvider(track);
+      if (own) return own;
+    } catch (err) {
+      console.warn('User lyrics lookup failed:', err);
+    }
+  }
+  return withLrclibRights(await fetchLrclibLyrics(track));
+}
+
+/**
+ * Fetch lyrics from LRCLIB with multi-tier fallback (Exact GET -> Cleaned GET -> Search API)
+ */
+export async function fetchLrclibLyrics(track) {
   if (!track || !track.title) {
     return { status: 'none', message: 'No track provided' };
   }

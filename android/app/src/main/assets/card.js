@@ -10,10 +10,49 @@
  *
  * Lyrics stay their songwriters' copyright, so a card is a short quote with credit, never a whole
  * song: MAX_QUOTE_LINES / MAX_QUOTE_CHARS cap the excerpt and the footer always names the song.
+ * The exceptions are lyrics LyricWave has the rights to show: a song that is itself openly licensed
+ * (an Openverse track whose license allows adaptations, see openLicenseAllowsFullLyrics), or
+ * lyrics the user added as their own, public domain or Creative Commons (user-lyrics.js). Those
+ * cards may quote up to OPEN_QUOTE_LINES / OPEN_QUOTE_CHARS, as much as stays readable, and always
+ * carry the license credit line.
  */
+
+import { openLicenseAllowsFullLyrics } from './types.js';
 
 export const MAX_QUOTE_LINES = 4;
 export const MAX_QUOTE_CHARS = 220;
+export const OPEN_QUOTE_LINES = 12;
+export const OPEN_QUOTE_CHARS = 480;
+
+export const DEFAULT_QUOTE_LIMITS = Object.freeze({ lines: MAX_QUOTE_LINES, chars: MAX_QUOTE_CHARS, open: false });
+export const OPEN_QUOTE_LIMITS = Object.freeze({ lines: OPEN_QUOTE_LINES, chars: OPEN_QUOTE_CHARS, open: true });
+
+/**
+ * Quote caps for a track: longer quotes only when the song's own license allows them, or when the
+ * lyrics on screen are the user's own with open rights (lyricsData.rights.allowsFull).
+ */
+export function quoteLimitsFor(track, lyricsData = null) {
+  if (lyricsData?.rights?.allowsFull === true) return OPEN_QUOTE_LIMITS;
+  return openLicenseAllowsFullLyrics(track?.openTrack?.license) ? OPEN_QUOTE_LIMITS : DEFAULT_QUOTE_LIMITS;
+}
+
+/**
+ * Credit drawn under the footer: the open song's license ("CC BY-SA 3.0 · "Song" by Creator ·
+ * Jamendo") and/or the rights of the user's own lyrics when a card quotes more because of them.
+ */
+export function cardLicenseCredit(track, lyricsData = null) {
+  const parts = [];
+  const ot = track?.openTrack;
+  if (ot?.license) {
+    const work = [track.title ? `“${track.title}”` : '', ot.creator ? `by ${ot.creator}` : ''].filter(Boolean).join(' ');
+    parts.push([ot.licenseLabel || ot.license, work, ot.provider].filter(Boolean).join(' · '));
+  }
+  const rights = lyricsData?.rights;
+  if (rights?.source === 'user' && rights.allowsFull && rights.rights !== 'song' && rights.credit) {
+    parts.push(rights.credit);
+  }
+  return parts.join(' · ');
+}
 
 export const CARD_FORMATS = {
   square: { width: 1080, height: 1080, label: 'Square' },
@@ -95,7 +134,7 @@ export function defaultLineIndex(lines, positionMs) {
  *  - tap anything else: start over with that line
  * @returns {{start: number, end: number, limited: boolean}} limited = the tap was refused by a cap
  */
-export function toggleLineSelection(selection, index, lines) {
+export function toggleLineSelection(selection, index, lines, limits = DEFAULT_QUOTE_LIMITS) {
   const fresh = { start: index, end: index, limited: false };
   if (!selection || selection.start < 0) return fresh;
   const { start, end } = selection;
@@ -109,7 +148,7 @@ export function toggleLineSelection(selection, index, lines) {
     const next = { start: Math.min(start, index), end: Math.max(end, index) };
     const count = next.end - next.start + 1;
     const chars = lines.slice(next.start, next.end + 1).reduce((n, l) => n + l.text.length, 0);
-    if (count > MAX_QUOTE_LINES || chars > MAX_QUOTE_CHARS) return { start, end, limited: true };
+    if (count > limits.lines || chars > limits.chars) return { start, end, limited: true };
     return { ...next, limited: false };
   }
   return fresh;
@@ -186,6 +225,58 @@ export function cardFileName(track) {
     .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   const parts = [slug(track?.artist), slug(track?.title)].filter(Boolean);
   return `lyricwave-${parts.join('-').slice(0, 80) || 'card'}.png`;
+}
+
+/** "Song by Artist" for the share sheet, or just whichever of the two is known. */
+export function shareTitle(track) {
+  const title = String(track?.title ?? '').trim();
+  const artist = String(track?.artist ?? '').trim();
+  if (title && artist) return `${title} by ${artist}`;
+  return title || artist;
+}
+
+/**
+ * Enforces the quote caps on whatever lines reach the renderer: at most MAX_QUOTE_LINES non-empty
+ * lines and MAX_QUOTE_CHARS characters, cutting the last line with an ellipsis when it overflows
+ * (a single very long lyric line can be picked on its own).
+ * @param {string[]} texts
+ * @returns {string[]}
+ */
+export function clampQuote(texts, limits = DEFAULT_QUOTE_LIMITS) {
+  const out = [];
+  let used = 0;
+  for (const raw of texts || []) {
+    const text = String(raw ?? '').replace(/\s+/g, ' ').trim();
+    if (!text) continue;
+    const room = limits.chars - used;
+    if (out.length >= limits.lines || room <= 0) break;
+    if (text.length > room) {
+      out.push(text.slice(0, Math.max(1, room - 1)).trimEnd() + '…');
+      break;
+    }
+    out.push(text);
+    used += text.length;
+  }
+  return out;
+}
+
+/**
+ * How a card can be shared here: 'native' (Android app bridge), 'web' (Web Share with files)
+ * or 'none' (desktop browsers: Download only).
+ */
+export function cardShareMode({ hasNativeBridge, canShareFiles }) {
+  if (hasNativeBridge) return 'native';
+  return canShareFiles ? 'web' : 'none';
+}
+
+/** window.LyricWaveNative when the Android app exposes the image share bridge, else null. */
+function nativeCardBridge() {
+  try {
+    const bridge = typeof window !== 'undefined' ? window.LyricWaveNative : null;
+    return bridge && typeof bridge.shareImage === 'function' ? bridge : null;
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -284,6 +375,8 @@ function drawBackground(ctx, style, w, h, art, makeCanvas) {
  * @param {string} [opts.style]
  * @param {string} [opts.format]
  * @param {(w: number, h: number) => HTMLCanvasElement} [opts.makeCanvas] for the blur pass
+ * @param {{lines: number, chars: number}} [opts.limits] quote caps (quoteLimitsFor(track))
+ * @param {string} [opts.credit] license credit drawn under the footer (open tracks)
  */
 export function renderLyricCard(ctx, opts) {
   const style = CARD_STYLES[opts.style] || CARD_STYLES[DEFAULT_CARD_STYLE];
@@ -344,7 +437,7 @@ export function renderLyricCard(ctx, opts) {
     lineHeight: style.bar ? 1.38 : 1.2,
     gap: style.bar ? 0.18 : 0.35
   };
-  const texts = (opts.lines || []).filter(Boolean);
+  const texts = clampQuote(opts.lines, opts.limits || DEFAULT_QUOTE_LIMITS);
   const layout = fitLyricLayout(texts.length ? texts : [' '], box, measurerFor(ctx, 800));
   const size = layout.fontSize;
   const rowH = size * box.lineHeight;
@@ -392,6 +485,16 @@ export function renderLyricCard(ctx, opts) {
   ctx.globalAlpha = 0.85;
   ctx.fillRect(pad, footerY - 40, 72, 6);
   ctx.globalAlpha = 1;
+
+  // License credit for openly licensed songs (CC BY etc. require it on anything shared)
+  if (opts.credit) {
+    ctx.fillStyle = style.metaMuted;
+    ctx.font = font(500, 24);
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    const measureCredit = (s) => ctx.measureText(s).width;
+    ctx.fillText(ellipsize(String(opts.credit), w - pad * 2, measureCredit), pad, h - pad / 2);
+  }
 
   ctx.restore();
   return layout;
@@ -477,11 +580,16 @@ export class LyricCardMaker {
     this.style = readPref(STORAGE_STYLE_KEY, CARD_STYLES, DEFAULT_CARD_STYLE);
     this.format = readPref(STORAGE_FORMAT_KEY, CARD_FORMATS, DEFAULT_CARD_FORMAT);
     this.track = null;
+    this.limits = DEFAULT_QUOTE_LIMITS;
     this.lines = [];
     this.selection = { start: -1, end: -1 };
     this.art = null;
     this._artToken = 0;
     this._busy = false;
+    // PNG of the current preview, encoded shortly after each change (see _scheduleBlob)
+    this._blob = null;
+    this._blobToken = 0;
+    this._blobTimer = 0;
 
     this._buildOptionButtons();
     this.linesEl?.addEventListener('click', (e) => {
@@ -493,11 +601,14 @@ export class LyricCardMaker {
     this.btnClose?.addEventListener('click', () => this.close());
     this.backdrop?.addEventListener('click', (e) => { if (e.target === this.backdrop) this.close(); });
 
-    // Web Share with files is the native share sheet on phones; desktops without it get Download only
-    this.canShareFiles = typeof navigator !== 'undefined' && typeof navigator.canShare === 'function'
+    // The Android app shares through its native bridge (its WebView has no Web Share API).
+    // Elsewhere Web Share with files is the share sheet on phones; desktops without it get Download only.
+    this.native = nativeCardBridge();
+    const canShareFiles = typeof navigator !== 'undefined' && typeof navigator.canShare === 'function'
       && typeof File !== 'undefined'
       && (() => { try { return navigator.canShare({ files: [new File([''], 'x.png', { type: 'image/png' })] }); } catch { return false; } })();
-    if (!this.canShareFiles && this.btnShare) {
+    this.shareMode = cardShareMode({ hasNativeBridge: Boolean(this.native), canShareFiles });
+    if (this.shareMode === 'none' && this.btnShare) {
       this.btnShare.classList.add('hidden');
       this.btnShare.disabled = true;
     }
@@ -524,6 +635,8 @@ export class LyricCardMaker {
       return false;
     }
     this.track = track;
+    this.lyricsData = lyricsData;
+    this.limits = quoteLimitsFor(track, lyricsData);
     this.lines = lines;
     const start = defaultLineIndex(lines, positionMs);
     this.selection = { start, end: start };
@@ -555,6 +668,9 @@ export class LyricCardMaker {
     if (!this.isOpen) return;
     this.backdrop.classList.add('hidden');
     this.backdrop.setAttribute('aria-hidden', 'true');
+    clearTimeout(this._blobTimer);
+    this._blobToken++;
+    this._blob = null;
     this.onClose();
   }
 
@@ -578,15 +694,48 @@ export class LyricCardMaker {
       art: this.art,
       style: this.style,
       format: this.format,
+      limits: this.limits,
+      credit: cardLicenseCredit(this.track, this.lyricsData),
       makeCanvas: (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
     });
     const count = this.selection.end - this.selection.start + 1;
     this.canvas.setAttribute('aria-label', `Lyrics card preview: ${this.selectedTexts().join(' / ')}`);
     if (this.hintEl) {
-      this.hintEl.textContent = count >= MAX_QUOTE_LINES
-        ? `${count} lines, the most a card can quote`
-        : `${count} of up to ${MAX_QUOTE_LINES} lines. Tap a neighbouring line to add it.`;
+      const max = this.limits.lines;
+      const openNote = this.limits.open ? ' These lyrics are openly licensed, so their credit goes on the card.' : '';
+      this.hintEl.textContent = (count >= max
+        ? `${count} lines, the most a card can quote.`
+        : `${count} of up to ${max} lines. Tap a neighbouring line to add it.`) + openNote;
     }
+    this._scheduleBlob();
+  }
+
+  /**
+   * Safari only lets navigator.share() run during the tap itself; awaiting canvas.toBlob() inside
+   * the click handler uses up that permission. So for Web Share, encode the PNG shortly after each
+   * change and let share() hand over the ready blob without awaiting anything first.
+   */
+  _scheduleBlob() {
+    this._blob = null;
+    clearTimeout(this._blobTimer);
+    const token = ++this._blobToken;
+    if (this.shareMode !== 'web' || !this.canvas) return;
+    this._blobTimer = setTimeout(() => {
+      try {
+        this.canvas.toBlob((blob) => {
+          if (blob && token === this._blobToken && this.isOpen) this._blob = blob;
+        }, 'image/png');
+      } catch {
+        // tainted or unsupported canvas: share() falls back to encoding on demand
+      }
+    }, 150);
+  }
+
+  /** The current card as base64 PNG (no data: prefix) for the Android bridge. */
+  _toBase64() {
+    this.render();
+    const url = this.canvas.toDataURL('image/png');
+    return url.slice(url.indexOf(',') + 1);
   }
 
   async toBlob() {
@@ -605,9 +754,14 @@ export class LyricCardMaker {
     this._busy = true;
     this.haptic('light');
     try {
-      const blob = await this.toBlob();
+      if (this.shareMode === 'native') {
+        if (!this._shareNative()) this.notify('Couldn’t open the share sheet. Try Download instead.', 'error');
+        return;
+      }
+      // Use the pre-rendered blob when it is ready so nothing is awaited before navigator.share
+      const blob = this._blob || await this.toBlob();
       const file = new File([blob], cardFileName(this.track), { type: 'image/png' });
-      const title = `${this.track.title} by ${this.track.artist}`.trim();
+      const title = shareTitle(this.track);
       await navigator.share({ files: [file], title, text: title });
     } catch (err) {
       if (err?.name !== 'AbortError') {
@@ -631,7 +785,40 @@ export class LyricCardMaker {
     }
   }
 
+  /** Android app: hands the PNG to the system share sheet. Returns false if the bridge refused it. */
+  _shareNative() {
+    try {
+      return this.native.shareImage(this._toBase64(), cardFileName(this.track), shareTitle(this.track)) === true;
+    } catch (err) {
+      console.warn('[LyricCard] native share failed', err);
+      return false;
+    }
+  }
+
+  /** Android app: saves to Pictures/LyricWave, or opens the share sheet (Save to Files...) on old Android. */
+  _saveNative() {
+    let saved = false;
+    try {
+      if (typeof this.native.saveImage === 'function' && this.native.canSaveImage?.() !== false) {
+        saved = this.native.saveImage(this._toBase64(), cardFileName(this.track)) === true;
+      }
+    } catch (err) {
+      console.warn('[LyricCard] native save failed', err);
+    }
+    if (saved) {
+      this.notify('Lyrics card saved to Pictures/LyricWave.', 'info');
+    } else if (this._shareNative()) {
+      this.notify('Pick where to save the card.', 'info');
+    } else {
+      this.notify('Couldn’t save the card on this device.', 'error');
+    }
+  }
+
   async _downloadNow() {
+    if (this.native) {
+      this._saveNative();
+      return;
+    }
     try {
       const blob = await this.toBlob();
       const url = URL.createObjectURL(blob);
@@ -661,9 +848,11 @@ export class LyricCardMaker {
 
   _onLineTap(index) {
     if (!Number.isInteger(index) || index < 0 || index >= this.lines.length) return;
-    const next = toggleLineSelection(this.selection, index, this.lines);
+    const next = toggleLineSelection(this.selection, index, this.lines, this.limits);
     if (next.limited) {
-      this.notify(`A card quotes up to ${MAX_QUOTE_LINES} short lines, with the song credited.`, 'info');
+      this.notify(this.limits.open
+        ? `A card fits up to ${this.limits.lines} lines, with the song and its license credited.`
+        : `A card quotes up to ${MAX_QUOTE_LINES} short lines, with the song credited.`, 'info');
       return;
     }
     this.haptic('light');

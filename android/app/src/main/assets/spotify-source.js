@@ -206,7 +206,8 @@ export class SpotifySource {
       position: Math.min(durationMs, adjustedProgressMs) / 1000,
       isPlaying,
       source: 'spotify',
-      playbackType: 'track'
+      playbackType: 'track',
+      isrc: item.external_ids?.isrc || null
     });
 
     this.emitTrack(track);

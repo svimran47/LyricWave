@@ -6,8 +6,8 @@
 
 import {
   getSelectableLines, defaultLineIndex, toggleLineSelection, wrapText, fitLyricLayout,
-  ellipsize, cardFileName, upscaleArtUrl, renderLyricCard,
-  CARD_STYLES, CARD_FORMATS, MAX_QUOTE_LINES
+  ellipsize, cardFileName, upscaleArtUrl, renderLyricCard, shareTitle, clampQuote, cardShareMode,
+  CARD_STYLES, CARD_FORMATS, MAX_QUOTE_LINES, MAX_QUOTE_CHARS
 } from './card.js';
 
 let passed = 0;
@@ -111,6 +111,27 @@ assert(upscaleArtUrl('https://is1-ssl.mzstatic.com/image/thumb/a/b/100x100bb.jpg
 assert(upscaleArtUrl('https://i.scdn.co/image/abc123') === 'https://i.scdn.co/image/abc123', 'Other art URLs are left alone');
 assert(upscaleArtUrl('') === '', 'No art URL stays empty');
 
+console.log('\n--- Testing share title, quote caps & share mode ---');
+
+assert(shareTitle({ title: 'Song', artist: 'Artist' }) === 'Song by Artist', 'Share title credits song and artist');
+assert(shareTitle({ title: ' Song ', artist: '' }) === 'Song', 'Share title without an artist is just the song');
+assert(shareTitle({ title: 'Song' }) === 'Song', 'Share title never says "by undefined"');
+assert(shareTitle({ artist: 'Artist' }) === 'Artist', 'Share title falls back to the artist');
+assert(shareTitle(null) === '', 'Share title of no track is empty');
+
+assert(clampQuote(['a', '', '  b  ', null]).join('|') === 'a|b', 'Quote drops blank lines and trims');
+assert(clampQuote(many.map((l) => l.text)).length === MAX_QUOTE_LINES, `Quote keeps at most ${MAX_QUOTE_LINES} lines`);
+const oneLong = clampQuote(['y'.repeat(500)]);
+assert(oneLong.length === 1 && oneLong[0].length === MAX_QUOTE_CHARS && oneLong[0].endsWith('…'), 'A single over-long line is cut to the character cap');
+const overflow = clampQuote(['z'.repeat(150), 'w'.repeat(150), 'never shown']);
+assert(overflow.length === 2 && overflow.join('').length === MAX_QUOTE_CHARS && overflow[1].endsWith('…'), 'Lines past the character cap are cut with an ellipsis');
+assert(clampQuote(undefined).length === 0, 'Quote of nothing is empty');
+
+assert(cardShareMode({ hasNativeBridge: true, canShareFiles: false }) === 'native', 'Android app shares through the native bridge');
+assert(cardShareMode({ hasNativeBridge: true, canShareFiles: true }) === 'native', 'Native bridge wins over Web Share');
+assert(cardShareMode({ hasNativeBridge: false, canShareFiles: true }) === 'web', 'Phones with Web Share use it');
+assert(cardShareMode({ hasNativeBridge: false, canShareFiles: false }) === 'none', 'Desktop without Web Share is Download only');
+
 console.log('\n--- Testing card rendering ---');
 
 function mockCtx() {
@@ -156,6 +177,11 @@ assert(noArtCtx.calls.drawImage === 0, 'Cards render without album art');
 const fallbackCtx = mockCtx();
 renderLyricCard(fallbackCtx, { lines: quote, title: '', artist: '', style: 'nope', format: 'nope' });
 assert(fallbackCtx.calls.fillText.includes('Unknown song'), 'Unknown style/format and blank track still render');
+
+const longCtx = mockCtx();
+renderLyricCard(longCtx, { lines: ['q'.repeat(400), 'never drawn'], title: 'T', artist: 'A', style: 'aurora', format: 'square' });
+const longDrawn = longCtx.calls.fillText.join('');
+assert(!longDrawn.includes('never drawn') && (longDrawn.match(/q/g) || []).length < MAX_QUOTE_CHARS, 'Renderer enforces the quote caps itself');
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

@@ -116,6 +116,9 @@ export class LastFmSource {
             position: 0,
             isPlaying: true,
             source: 'lastfm',
+            // Last.fm carries MusicBrainz ids for many scrobbles.
+            mbid: track.mbid || null,
+            artistMbid: track.artistMbid || null,
             isApproximate: true,
             // Lets the engine adopt LRCLIB's real length if Last.fm has none.
             durationEstimated: !providedSec
@@ -229,6 +232,8 @@ export class LastFmSource {
       artist: latest.artist?.['#text'] || latest.artist?.name || '',
       album: latest.album?.['#text'] || '',
       albumArt: art,
+      mbid: latest.mbid || '',
+      artistMbid: latest.artist?.mbid || '',
       durationSec: 0,
       isNowPlaying
     };

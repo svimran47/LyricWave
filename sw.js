@@ -2,7 +2,7 @@
  * LyricWave Service Worker (PWA Offline & Shell Caching)
  */
 
-const CACHE_NAME = 'lyricwave-v23';
+const CACHE_NAME = 'lyricwave-v33';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -18,7 +18,17 @@ const STATIC_ASSETS = [
   './translate.js',
   './audio-reactive.js',
   './visuals.js',
+  './cat-dancer.js',
   './card.js',
+  './db.js',
+  './musicbrainz.js',
+  './library.js',
+  './library-view.js',
+  './openverse.js',
+  './user-lyrics.js',
+  './queue.js',
+  './playlists.js',
+  './backup.js',
   './mic.js',
   './shazam-core.js',
   './projectm-visualizer.js',
@@ -66,6 +76,15 @@ self.addEventListener('fetch', (event) => {
     url.hostname.includes('audioscrobbler.com') ||
     url.hostname.includes('apple.com') ||
     url.hostname.includes('deezer.com') ||
+    url.hostname.includes('musicbrainz.org') ||
+    url.hostname.includes('wikidata.org') ||
+    url.hostname.includes('wikimedia.org') ||
+    url.hostname.includes('listenbrainz.org') ||
+    url.hostname.includes('coverartarchive.org') ||
+    url.hostname.includes('archive.org') ||
+    url.hostname.includes('openverse.org') ||
+    // Free music streams from its host (Jamendo, Wikimedia...); never cached, range requests untouched
+    (url.origin !== self.location.origin && (event.request.destination === 'audio' || event.request.destination === 'video')) ||
     url.pathname.startsWith('/api/')
   ) {
     return;
