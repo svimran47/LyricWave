@@ -33,11 +33,17 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * or immediately when the page calls LyricWaveNative.applyWebUpdate(). Files missing from the
  * bundle fall back to the APK's assets. Installing a new APK discards all downloaded bundles,
  * so the APK's own files always win right after an APK update.
+ *
+ * Bundles are published to the repo's Releases by `npm run publish:web` (stable channel, release
+ * tag web-latest) or `npm run publish:web:test` (test channel, tag web-test). The channel is
+ * chosen in the app's update panel.
  */
 final class WebUpdater {
 
-    /** Release assets of the public repo; see .github/workflows/web-update.yml. */
-    static final String BASE_URL = "https://github.com/svimran46/LyricWave/releases/download/web-latest/";
+    /** Release assets of the repo the bundles are published to; see scripts/publish-web.mjs. */
+    static final String RELEASES_URL = "https://github.com/svimran47/LyricWave/releases/download/";
+    static final String CHANNEL_STABLE = "stable";
+    static final String CHANNEL_TEST = "test";
 
     static final String STATUS_CHECKING = "checking";
     static final String STATUS_UP_TO_DATE = "up-to-date";
@@ -55,6 +61,13 @@ final class WebUpdater {
     private static final String KEY_ACTIVE_VERSION = "active_version";
     private static final String KEY_APK_STAMP = "apk_stamp";
     private static final String KEY_LAST_CHECK = "last_check";
+    private static final String KEY_CHANNEL = "channel";
+    private static final String KEY_LATEST_SEEN = "latest_seen";
+    private static final String KEY_LAST_STATUS = "last_status";
+    private static final String KEY_NOTIFIED_VERSION = "notified_version";
+    private static final String KEY_NOTIFICATIONS = "notifications_enabled";
+    private static final String KEY_PAUSED = "auto_paused";
+    private static WebUpdater instance;
     private static final long AUTO_CHECK_INTERVAL_MS = 30L * 60 * 1000;
 
     private final File root;
@@ -69,7 +82,13 @@ final class WebUpdater {
     /** Version currently served to the WebView (built-in version when serving APK assets). */
     private volatile long servingVersion;
 
-    WebUpdater(Context context) {
+    /** One updater per process: the activity and the background job share its state. */
+    static synchronized WebUpdater get(Context context) {
+        if (instance == null) instance = new WebUpdater(context);
+        return instance;
+    }
+
+    private WebUpdater(Context context) {
         Context app = context.getApplicationContext();
         root = new File(app.getFilesDir(), "web-updates");
         prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
@@ -129,6 +148,8 @@ final class WebUpdater {
             if (manual) listener.onStatus(STATUS_DISABLED, true);
             return;
         }
+        if (manual) prefs.edit().putBoolean(KEY_PAUSED, false).apply();
+        else if (isAutoCheckPaused()) return;
         long now = System.currentTimeMillis();
         if (!manual && now - prefs.getLong(KEY_LAST_CHECK, 0) < AUTO_CHECK_INTERVAL_MS) return;
         if (!checking.compareAndSet(false, true)) {
@@ -140,7 +161,7 @@ final class WebUpdater {
             String status;
             try {
                 status = runCheck();
-                prefs.edit().putLong(KEY_LAST_CHECK, System.currentTimeMillis()).apply();
+                prefs.edit().putLong(KEY_LAST_CHECK, System.currentTimeMillis()).putString(KEY_LAST_STATUS, status).apply();
             } catch (Exception e) {
                 status = STATUS_ERROR;
             } finally {
@@ -151,17 +172,103 @@ final class WebUpdater {
     }
 
     void shutdown() {
-        executor.shutdownNow();
+        // The updater outlives the activity (the background job uses it too); nothing to stop.
+    }
+
+    String channel() {
+        return CHANNEL_TEST.equals(prefs.getString(KEY_CHANNEL, CHANNEL_STABLE)) ? CHANNEL_TEST : CHANNEL_STABLE;
+    }
+
+    /** Switching channel forgets what was seen so the next check looks at the new channel. */
+    void setChannel(String channel) {
+        String next = CHANNEL_TEST.equals(channel) ? CHANNEL_TEST : CHANNEL_STABLE;
+        if (next.equals(channel())) return;
+        prefs.edit().putString(KEY_CHANNEL, next).putLong(KEY_LAST_CHECK, 0).putLong(KEY_LATEST_SEEN, 0).apply();
+    }
+
+    long latestSeenVersion() {
+        return prefs.getLong(KEY_LATEST_SEEN, 0);
+    }
+
+    long lastCheckTime() {
+        return prefs.getLong(KEY_LAST_CHECK, 0);
+    }
+
+    String lastStatus() {
+        return prefs.getString(KEY_LAST_STATUS, "");
+    }
+
+    boolean notificationsEnabled() {
+        return prefs.getBoolean(KEY_NOTIFICATIONS, true);
+    }
+
+    void setNotificationsEnabled(boolean enabled) {
+        prefs.edit().putBoolean(KEY_NOTIFICATIONS, enabled).apply();
+    }
+
+    /** True once per downloaded version, so the background job notifies only one time for it. */
+    boolean shouldNotify(long version) {
+        return prefs.getLong(KEY_NOTIFIED_VERSION, 0) != version;
+    }
+
+    void markNotified(long version) {
+        prefs.edit().putLong(KEY_NOTIFIED_VERSION, version).apply();
+    }
+
+    /** Version of the downloaded bundle that is waiting to be applied, or 0. */
+    long readyVersion() {
+        return isUpdateReady() ? prefs.getLong(KEY_ACTIVE_VERSION, 0) : 0;
+    }
+
+    /**
+     * Drops every downloaded bundle so the app runs the files inside the APK again (roll back).
+     * The page should reload afterwards. Returns false when nothing was downloaded.
+     */
+    synchronized boolean rollbackToBuiltIn() {
+        boolean hadBundle = servingVersion != builtInVersion || prefs.getLong(KEY_ACTIVE_VERSION, 0) != 0;
+        pathHandler.root = null;
+        servingVersion = builtInVersion;
+        // Paused so the background check does not fetch the same bundle again straight away; a
+        // manual Check (or a new APK) turns automatic updates back on.
+        prefs.edit().putLong(KEY_ACTIVE_VERSION, 0).putLong(KEY_LAST_CHECK, 0).putBoolean(KEY_PAUSED, true).apply();
+        WebUpdateCore.deleteRecursively(root);
+        return hadBundle;
+    }
+
+    boolean isAutoCheckPaused() {
+        return prefs.getBoolean(KEY_PAUSED, false);
+    }
+
+    /** Blocking check for the background job; ignores the 30 minute throttle. */
+    String checkBlocking() {
+        if (!isEnabled()) return STATUS_DISABLED;
+        if (!checking.compareAndSet(false, true)) return STATUS_CHECKING;
+        String status;
+        try {
+            status = runCheck();
+            prefs.edit().putLong(KEY_LAST_CHECK, System.currentTimeMillis()).putString(KEY_LAST_STATUS, status).apply();
+        } catch (Exception e) {
+            status = STATUS_ERROR;
+            prefs.edit().putString(KEY_LAST_STATUS, status).apply();
+        } finally {
+            checking.set(false);
+        }
+        return status;
+    }
+
+    private String baseUrl() {
+        return RELEASES_URL + (CHANNEL_TEST.equals(channel()) ? "web-test" : "web-latest") + "/";
     }
 
     private String runCheck() throws IOException {
         if (isUpdateReady()) return STATUS_READY;
 
+        final String base = baseUrl();
         byte[] manifestBytes;
         byte[] signature;
         try {
-            manifestBytes = fetch(BASE_URL + "web-update.properties", WebUpdateCore.MAX_MANIFEST_BYTES);
-            signature = fetch(BASE_URL + "web-update.sig", WebUpdateCore.MAX_SIGNATURE_BYTES);
+            manifestBytes = fetch(base + "web-update.properties", WebUpdateCore.MAX_MANIFEST_BYTES);
+            signature = fetch(base + "web-update.sig", WebUpdateCore.MAX_SIGNATURE_BYTES);
         } catch (FileNotFoundException e) {
             return STATUS_UP_TO_DATE; // nothing published yet
         }
@@ -169,6 +276,7 @@ final class WebUpdater {
             throw new IOException("bad signature");
         }
         WebUpdateCore.Manifest m = WebUpdateCore.parseManifest(manifestBytes);
+        prefs.edit().putLong(KEY_LATEST_SEEN, m.version).apply();
 
         long current = Math.max(servingVersion, prefs.getLong(KEY_ACTIVE_VERSION, 0));
         switch (WebUpdateCore.decide(m, current, nativeVersionCode)) {
@@ -184,7 +292,7 @@ final class WebUpdater {
         File zip = new File(root, "download.zip");
         File tmp = new File(root, ".tmp-" + m.version);
         try {
-            download(BASE_URL + "web-bundle.zip", zip, m.size);
+            download(base + "web-bundle.zip", zip, m.size);
             if (!m.sha256.equals(WebUpdateCore.sha256Hex(zip))) throw new IOException("sha256 mismatch");
             WebUpdateCore.deleteRecursively(tmp);
             WebUpdateCore.extractZip(zip, tmp);

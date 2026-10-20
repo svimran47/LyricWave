@@ -4636,8 +4636,81 @@ function setupNativeWebUpdates() {
 
   section?.classList.remove('hidden');
   render();
+  setupUpdateAdminPanel(bridge, { readInfo, render, applyUpdate });
   // An update finished downloading before this page loaded (e.g. during a previous session).
   if (readInfo().updateReady) promptReload();
+}
+
+/** Admin panel (Settings > App updates): versions, channel, notifications and roll back. */
+function setupUpdateAdminPanel(bridge, { render, applyUpdate }) {
+  const sec = document.getElementById('secUpdates');
+  if (!sec || typeof bridge.getUpdateAdminInfo !== 'function') return;
+  const installed = document.getElementById('updInstalled');
+  const latest = document.getElementById('updLatest');
+  const btnNow = document.getElementById('btnUpdNow');
+  const channel = document.getElementById('updChannel');
+  const notify = document.getElementById('updNotify');
+  const notifySub = document.getElementById('updNotifySub');
+  const btnRollback = document.getElementById('btnUpdRollback');
+
+  const read = () => {
+    try { return JSON.parse(bridge.getUpdateAdminInfo() || '{}'); } catch { return {}; }
+  };
+  const when = (seconds) => {
+    if (!seconds) return 'unknown';
+    return new Date(seconds * 1000).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
+  const label = (info) => {
+    if (info.ready) return 'Ready to install';
+    if (info.lastStatus === 'needs-app-update') return 'Needs a newer app';
+    if (info.lastStatus === 'error') return "Couldn't reach the server";
+    if (!info.latest) return info.paused ? 'Automatic updates paused' : 'Not checked yet';
+    if (info.latest > info.serving) return `Build ${when(info.latest)}`;
+    return 'You have the latest';
+  };
+
+  const paint = () => {
+    const info = read();
+    const onBuiltIn = !info.serving || info.serving === info.builtIn;
+    installed.textContent = `${onBuiltIn ? 'Built-in' : 'Update'} · ${when(info.serving)}`;
+    latest.textContent = label(info);
+    btnNow.textContent = info.ready ? 'Update now' : 'Check now';
+    channel.value = info.channel === 'test' ? 'test' : 'stable';
+    notify.checked = info.notifications !== false;
+    notifySub.textContent = info.notifications !== false && info.notificationsAllowed === false
+      ? 'Allow notifications for LyricWave in Android settings'
+      : 'Tap one to update';
+    btnRollback.disabled = onBuiltIn;
+    render();
+  };
+
+  btnNow.addEventListener('click', () => {
+    if (read().ready) { applyUpdate(); return; }
+    latest.textContent = 'Checking…';
+    try { bridge.checkForWebUpdate(); } catch {}
+    setTimeout(paint, 2500);
+    setTimeout(paint, 8000);
+  });
+  channel.addEventListener('change', () => {
+    try { bridge.setUpdateChannel(channel.value); } catch {}
+    showAlert(channel.value === 'test' ? 'Following test builds.' : 'Following stable updates.', 'info');
+    paint();
+  });
+  notify.addEventListener('change', () => {
+    try { bridge.setUpdateNotifications(notify.checked); } catch {}
+    setTimeout(paint, 800);
+  });
+  btnRollback.addEventListener('click', () => {
+    try { bridge.rollbackWebUpdate(); } catch {}
+  });
+
+  const prev = window.__lyricwaveWebUpdate;
+  window.__lyricwaveWebUpdate = (arg) => {
+    if (typeof prev === 'function') prev(arg);
+    paint();
+  };
+  sec.classList.remove('hidden');
+  paint();
 }
 
 // =====================================================================

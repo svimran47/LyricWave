@@ -35,8 +35,8 @@ android {
         minSdk 21
         // Google Play requires targetSdk 36 for new apps and updates from Aug 31, 2026.
         targetSdk 36
-        versionCode 5
-        versionName "1.3.0"
+        versionCode 6
+        versionName "1.4.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField "long", "BUILT_IN_WEB_VERSION", "${builtInWebVersion()}L"

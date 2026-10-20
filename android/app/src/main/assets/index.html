@@ -1358,6 +1358,50 @@
           </div>
         </section>
 
+        <!-- App updates admin panel (Android app only): versions, channel, notifications, roll back -->
+        <section class="set-section hidden" id="secUpdates" aria-labelledby="secUpdatesTitle">
+          <h3 id="secUpdatesTitle" class="set-section-title">App updates</h3>
+          <div class="set-group">
+            <div class="set-row">
+              <span class="set-row-text">
+                <span class="set-row-label">Installed</span>
+                <span id="updInstalled" class="set-row-sub">—</span>
+              </span>
+            </div>
+            <div class="set-row">
+              <span class="set-row-text">
+                <span class="set-row-label">Latest available</span>
+                <span id="updLatest" class="set-row-sub">—</span>
+              </span>
+              <button id="btnUpdNow" class="set-btn" type="button">Check now</button>
+            </div>
+            <div class="set-row">
+              <label class="set-row-label" for="updChannel">Channel</label>
+              <select id="updChannel" class="set-select">
+                <option value="stable">Stable</option>
+                <option value="test">Test builds</option>
+              </select>
+            </div>
+            <div class="set-row">
+              <span class="set-row-text">
+                <span class="set-row-label">Update notifications</span>
+                <span id="updNotifySub" class="set-row-sub">Tap one to update</span>
+              </span>
+              <label class="switch">
+                <input id="updNotify" type="checkbox" checked>
+                <span class="slider-round"></span>
+              </label>
+            </div>
+            <div class="set-row">
+              <span class="set-row-text">
+                <span class="set-row-label">Roll back</span>
+                <span class="set-row-sub">Go back to the version inside the app</span>
+              </span>
+              <button id="btnUpdRollback" class="set-btn" type="button">Roll back</button>
+            </div>
+          </div>
+        </section>
+
       </div>
 
       <div class="modal-footer">

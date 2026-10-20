@@ -8,6 +8,7 @@ import android.content.ComponentName;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
@@ -67,6 +68,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int PERMISSION_REQUEST_RECORD_AUDIO = 101;
     /** Native audio-reactive (Visualizer) permission flow, requested via the bridge. */
     private static final int PERMISSION_REQUEST_AUDIO_REACTIVE = 102;
+    private static final int PERMISSION_REQUEST_NOTIFICATIONS = 103;
     private static final String APP_HOST = "appassets.androidplatform.net";
     private static final String APP_START_URL = "https://" + APP_HOST + "/assets/index.html";
 
@@ -156,7 +158,9 @@ public class MainActivity extends AppCompatActivity {
 
         // Serve the app from the newest verified web update, falling back to the APK's assets.
         // Same origin either way, so localStorage and the native bridge checks are unchanged.
-        webUpdater = new WebUpdater(this);
+        webUpdater = WebUpdater.get(this);
+        UpdateCheckJobService.schedule(this);
+        askNotificationPermissionOnce();
         final WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
                 .setDomain(APP_HOST)
                 .addPathHandler("/assets/", webUpdater.pathHandler())
@@ -322,9 +326,38 @@ public class MainActivity extends AppCompatActivity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        if (intent.getBooleanExtra(EXTRA_APPLY_WEB_UPDATE, false)) applyUpdateFromNotification();
         // Returning from the Spotify login tab: hand code/state to the web app's callback handler.
         if (webView != null && isAuthCallback(intent.getData())) {
             webView.loadUrl(startUrlFor(intent));
+        }
+    }
+
+    /** Android 13+ needs a runtime grant before the "update ready" notification can show. */
+    void askNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return;
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                == PackageManager.PERMISSION_GRANTED) return;
+        ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                PERMISSION_REQUEST_NOTIFICATIONS);
+    }
+
+    /** Asked once on first launch; the update panel can ask again if it was declined. */
+    private void askNotificationPermissionOnce() {
+        SharedPreferences prefs = getSharedPreferences("web_update_ui", MODE_PRIVATE);
+        if (prefs.getBoolean("asked_notifications", false)) return;
+        prefs.edit().putBoolean("asked_notifications", true).apply();
+        askNotificationPermission();
+    }
+
+    /** Set by the "update ready" notification: switch to the downloaded bundle and reload. */
+    static final String EXTRA_APPLY_WEB_UPDATE = "apply_web_update";
+
+    private void applyUpdateFromNotification() {
+        if (destroyed || webView == null || webUpdater == null) return;
+        if (webUpdater.applyReadyUpdate()) {
+            webView.clearCache(false);
+            webView.loadUrl(APP_START_URL);
         }
     }
 
@@ -819,6 +852,50 @@ public class MainActivity extends AppCompatActivity {
         public void checkForWebUpdate() {
             WebUpdater u = webUpdater;
             if (u != null) u.check(true, MainActivity.this::pushWebUpdateStatus);
+        }
+
+        /** JSON for the update panel: channel, versions, last check, notification setting. */
+        @JavascriptInterface
+        public String getUpdateAdminInfo() {
+            WebUpdater u = webUpdater;
+            if (u == null) return "{}";
+            return "{\"channel\":\"" + u.channel()
+                    + "\",\"serving\":" + u.servingVersion()
+                    + ",\"builtIn\":" + u.builtInVersion()
+                    + ",\"latest\":" + u.latestSeenVersion()
+                    + ",\"lastCheck\":" + u.lastCheckTime()
+                    + ",\"lastStatus\":\"" + u.lastStatus().replaceAll("[^a-z-]", "")
+                    + "\",\"ready\":" + u.isUpdateReady()
+                    + ",\"paused\":" + u.isAutoCheckPaused()
+                    + ",\"notifications\":" + u.notificationsEnabled()
+                    + ",\"notificationsAllowed\":"
+                    + androidx.core.app.NotificationManagerCompat.from(MainActivity.this).areNotificationsEnabled() + "}";
+        }
+
+        /** "stable" or "test": which published bundle channel this app follows. */
+        @JavascriptInterface
+        public void setUpdateChannel(String channel) {
+            WebUpdater u = webUpdater;
+            if (u != null) u.setChannel(channel);
+        }
+
+        @JavascriptInterface
+        public void setUpdateNotifications(boolean enabled) {
+            WebUpdater u = webUpdater;
+            if (u == null) return;
+            u.setNotificationsEnabled(enabled);
+            if (enabled) runOnUiThread(MainActivity.this::askNotificationPermission);
+        }
+
+        /** Drops downloaded updates and reloads on the files inside the APK. */
+        @JavascriptInterface
+        public void rollbackWebUpdate() {
+            runOnUiThread(() -> {
+                if (destroyed || webView == null || webUpdater == null) return;
+                webUpdater.rollbackToBuiltIn();
+                webView.clearCache(false);
+                webView.loadUrl(APP_START_URL);
+            });
         }
 
         /** Switches to the downloaded update and reloads the app. */
