@@ -6,10 +6,14 @@
  * word-by-word reveal timing,
  * multi-theme rendering (Pixel OLED, Neon, Vinyl, Paper + token-based themes),
  * and (Sprint 2) animation styles driven by an AudioReactive source:
- *   'pulse' (beat/vocal synced, default) | 'reveal' (word-by-word) | 'karaoke' (smooth fill) | 'minimal' (static).
+ *   'pulse' (beat/vocal synced, default) | 'reveal' (word-by-word) | 'karaoke' (smooth fill) |
+ *   'kinetic' (bold motion type, word by word) | 'typewriter' | 'blur' (focus pull) | 'wave' | 'neon' | 'flip'
+ *   (all word by word) | 'minimal' (static).
  */
 
-const ANIMATION_STYLES = ['pulse', 'reveal', 'karaoke', 'minimal'];
+const ANIMATION_STYLES = ['pulse', 'reveal', 'karaoke', 'kinetic', 'typewriter', 'blur', 'wave', 'neon', 'flip', 'minimal'];
+/** Styles that always play word by word, whatever the Word-by-word toggle says. */
+export const WORD_STYLES = new Set(['kinetic', 'typewriter', 'blur', 'wave', 'neon', 'flip']);
 const STATIC_REDRAW_MS = 500; // static styles only repaint this often (follows theme / adaptive palette changes)
 
 export class ReelVisualizer {
@@ -60,7 +64,11 @@ export class ReelVisualizer {
       (navigator.deviceMemory && navigator.deviceMemory <= 4)
     );
     this.isThrottled30fps = isMobileDevice || isLowPowerHardware;
-    this.minFrameIntervalMs = this.isThrottled30fps ? 33 : 0;
+    // Start at full rate everywhere; _governFrameRate() drops to 30fps only if drawing proves too slow.
+    this.minFrameIntervalMs = 0;
+    this._drawCostAvg = 0;
+    this._slowFrames = 0;
+    this._fastFrames = 0;
 
     // Visibility change listener
     if (typeof document !== 'undefined') {
@@ -256,7 +264,7 @@ export class ReelVisualizer {
     // Compute word-by-word reveal index (karaoke always needs word tracking)
     let wordIndex = -1;
     let wordProgress = 0;
-    const trackWords = this.wordByWordMode || style === 'karaoke';
+    const trackWords = this.wordByWordMode || style === 'karaoke' || WORD_STYLES.has(style);
     if (trackWords && this.activeWords.length > 0) {
       for (let i = 0; i < this.activeWords.length; i++) {
         if (positionMs >= this.activeWords[i].startMs) {
@@ -341,6 +349,7 @@ export class ReelVisualizer {
     const ctx = this.ctx;
     const w = this.width;
     const h = this.height;
+    const drawStart = now;
 
     ctx.clearRect(0, 0, w, h);
 
@@ -388,6 +397,27 @@ export class ReelVisualizer {
         this.drawDynamicWaveTokens(ctx, w, h, centerY, basePhase, pulse);
     }
     ctx.globalAlpha = 1.0;
+    if (!isStatic) this._governFrameRate(performance.now() - drawStart);
+  }
+
+  /**
+   * Adaptive frame rate: draw at the display rate (60fps+) and fall back to 30fps only while the canvas
+   * work itself is slow (about 20 slow frames in a row); return to full rate once it is cheap again.
+   * Low-power devices need a longer slow streak to recover, so the rate does not flap.
+   */
+  _governFrameRate(costMs) {
+    this._drawCostAvg = this._drawCostAvg * 0.9 + costMs * 0.1;
+    if (this._drawCostAvg > 9) {
+      this._fastFrames = 0;
+      if (++this._slowFrames >= 20 && this.minFrameIntervalMs === 0) this.minFrameIntervalMs = 33;
+    } else {
+      this._slowFrames = 0;
+      const need = this.isThrottled30fps ? 600 : 240;
+      if (this.minFrameIntervalMs > 0 && this._drawCostAvg < 4 && ++this._fastFrames >= need) {
+        this.minFrameIntervalMs = 0;
+        this._fastFrames = 0;
+      }
+    }
   }
 
   /**

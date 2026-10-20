@@ -105,5 +105,12 @@ reel.setWordByWordMode(false);
 state = reel.render(12500, true);
 assert(state.wordByWordMode === false, 'Word-by-word mode can be disabled');
 
+// 5. Adaptive frame rate: full rate by default, 30fps only while drawing is slow
+assert(reel.minFrameIntervalMs === 0, 'Reel draws at the full display rate by default');
+for (let i = 0; i < 80; i++) reel._governFrameRate(15);
+assert(reel.minFrameIntervalMs === 33, 'Sustained slow drawing falls back to 30fps');
+for (let i = 0; i < 700; i++) reel._governFrameRate(1);
+assert(reel.minFrameIntervalMs === 0, 'Cheap drawing returns to the full rate');
+
 console.log(`\nReel tests completed: ${passed} passed, ${failed} failed.`);
 if (failed > 0) process.exit(1);

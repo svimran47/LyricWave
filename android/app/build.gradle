@@ -114,7 +114,7 @@ def webAppFiles = [
     'mic.js', 'phone-source.js', 'projectm-visualizer.js', 'reel.js', 'search.js', 'shazam-core.js',
     'spotify-source.js', 'translate.js', 'types.js', 'user-auth.js', 'visuals.js', 'card.js',
     'db.js', 'musicbrainz.js', 'library.js', 'library-view.js', 'openverse.js', 'user-lyrics.js', 'queue.js', 'playlists.js', 'backup.js',
-    'cat-dancer.js'
+    'kinetic.js'
 ]
 
 task copyWebAssets(type: Sync) {
@@ -122,7 +122,6 @@ task copyWebAssets(type: Sync) {
         include webAppFiles
         include 'icons/**'
         include 'vendor/projectm/**'
-        include 'assets/cat/**'
     }
     into file("${projectDir}/src/main/assets")
 }

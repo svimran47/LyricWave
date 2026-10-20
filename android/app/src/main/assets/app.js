@@ -26,10 +26,11 @@ import { searchTracks, SearchSource } from './search.js';
 import { LastFmSource } from './lastfm.js';
 import { PhoneMediaSource } from './phone-source.js';
 import { UnifiedSyncEngine } from './engine.js';
-import { ReelVisualizer } from './reel.js';
+import { ReelVisualizer, WORD_STYLES } from './reel.js';
 import { AudioReactive } from './audio-reactive.js';
 import { translateLyrics, defaultTargetLang, TRANSLATE_LANGUAGES, TranslationQuotaError } from './translate.js';
 import { BeatVisuals } from './visuals.js';
+import { kineticRoles } from './kinetic.js';
 import { ProjectMVisualizer, isProjectMSupported } from './projectm-visualizer.js';
 import { LyricCardMaker } from './card.js';
 import { LibraryCollector } from './library.js';
@@ -185,6 +186,8 @@ const moreSheetHandle = document.getElementById('moreSheetHandle');
 const btnCloseMoreSheet = document.getElementById('btnCloseMoreSheet');
 const btnMoreOpenSettings = document.getElementById('btnMoreOpenSettings');
 const animStyleButtons = document.querySelectorAll('.anim-style-btn');
+const lyricFontButtons = document.querySelectorAll('.lyric-font-btn');
+const lyricColorButtons = document.querySelectorAll('.lyric-color-btn');
 const beatSyncStatus = document.getElementById('beatSyncStatus');
 const beatSyncHint = document.getElementById('beatSyncHint');
 const btnEnableAudioMode = document.getElementById('btnEnableAudioMode');
@@ -290,12 +293,16 @@ const STORAGE_RECENT_SONGS_KEY = 'lyricwave_recent_songs';
 const STORAGE_FIRST_RUN_DISMISSED_KEY = 'lyricwave_first_run_dismissed';
 const STORAGE_DISCOVER_VIEW_KEY = 'lyricwave_discover_view';
 const STORAGE_ANIM_KEY = 'lyricwave_lyric_anim';
+const STORAGE_LYRIC_FONT_KEY = 'lyricwave_lyric_font';
+const STORAGE_LYRIC_COLOR_KEY = 'lyricwave_lyric_color';
 const STORAGE_HAPTICS_KEY = 'lyricwave_haptics';
 const MAX_RECENT_SONGS = 10;
 
 /** Every theme the UI offers (order = swatch order). Light themes tell the system bars to use dark icons. */
 const THEME_IDS = ['adaptive', 'aurora', 'vinyl', 'paper', 'neon', 'pixel', 'minimal', 'sunset', 'ocean', 'sakura', 'mono', 'synthwave', 'forest'];
-const ANIM_STYLES = ['pulse', 'reveal', 'karaoke', 'minimal'];
+const ANIM_STYLES = ['pulse', 'reveal', 'karaoke', 'kinetic', 'typewriter', 'blur', 'wave', 'neon', 'flip', 'minimal'];
+/** Styles that follow the beat (CSS --beat / --vocal / --energy); the rest ignore the audio analysis. */
+const REACTIVE_STYLES = new Set(['pulse', 'karaoke', 'kinetic', 'neon']);
 const DEFAULT_ANIM_STYLE = 'pulse';
 
 function getDefaultTheme() {
@@ -715,7 +722,8 @@ function applyReelState(state, effectiveMs) {
   const style = currentAnimStyle;
   if (reelContainer.dataset.anim !== style) reelContainer.dataset.anim = style;
 
-  const wordMode = Boolean(state.wordByWordMode) && style !== 'minimal';
+  // Kinetic, typewriter, blur, wave, neon and flip always play word by word as each word is sung.
+  const wordMode = (Boolean(state.wordByWordMode) || WORD_STYLES.has(style)) && style !== 'minimal';
   const currentIdx = state.currentWordIndex;
 
   for (let i = 0; i < reelWordElements.length; i++) {
@@ -742,7 +750,7 @@ function applyReelState(state, effectiveMs) {
     }
   }
 
-  const reactive = style === 'pulse' || style === 'karaoke';
+  const reactive = REACTIVE_STYLES.has(style);
   setReelVar('--beat', 'beat', reactive ? Number(state.beat) : 0);
   setReelVar('--vocal', 'vocal', reactive ? Number(state.vocal) : 0);
   setReelVar('--energy', 'energy', reactive ? Number(state.energy) : 0);
@@ -760,7 +768,7 @@ function updateStageTick(tick) {
     shownDurationText = durationText;
     timeDuration.textContent = durationText;
   }
-  progressBarFill.style.width = `${tick.progressPercent.toFixed(2)}%`;
+  progressBarFill.style.transform = `scaleX(${(tick.progressPercent / 100).toFixed(4)})`;
   const progressInt = Math.round(tick.progressPercent);
   if (progressInt !== shownProgressInt) {
     shownProgressInt = progressInt;
@@ -777,8 +785,7 @@ function updateStageTick(tick) {
       try { frame = audioReactive.getFrame(tick.effectiveMs); } catch { frame = null; }
     }
     if (beatVisuals?.active) beatVisuals.render(frame, performance.now());
-    if (projectmOn) projectm.render(frame, tick.isPlaying);
-  }
+    if (projectmOn) projectm.render(frame, tick.isPlaying);  }
 }
 
 /** Artwork for the stage header and the mini player, with a glyph fallback when missing or broken. */
@@ -1050,8 +1057,7 @@ const engine = new UnifiedSyncEngine({
     if (stageOpen) centerActiveLine(prefersReducedMotion() ? 'auto' : 'smooth');
 
     // 2. Update OLED Reel Centered Box
-    updateReelLine(lineIndex);
-  },
+    updateReelLine(lineIndex);  },
 
   onTick: (tick) => {
     // Mini player progress line: ~4 updates per second is plenty for a 2px bar.
@@ -1281,7 +1287,7 @@ btnMiniPlay?.addEventListener('click', (e) => {
 function wantAudioReactive() {
   if (!stageOpen || document.hidden) return false;
   // Fullscreen always runs the beat visuals, whatever the lyric animation style.
-  return currentAnimStyle === 'pulse' || currentAnimStyle === 'karaoke' || isReelFullscreen();
+  return REACTIVE_STYLES.has(currentAnimStyle) || isReelFullscreen();
 }
 
 /** Start/stop audio-reactive analysis to match the UI state. Resolves to the resulting mode. */
@@ -1314,7 +1320,7 @@ document.addEventListener('visibilitychange', () => {
 
 function updateBeatSyncUI() {
   const mode = audioReactive.mode;
-  const reactiveStyle = currentAnimStyle === 'pulse' || currentAnimStyle === 'karaoke';
+  const reactiveStyle = REACTIVE_STYLES.has(currentAnimStyle);
   const nativeOk = AudioReactive.isNativeAvailable();
   if (beatSyncStatus) {
     beatSyncStatus.textContent = mode === 'audio' ? 'Following the music'
@@ -1330,6 +1336,70 @@ function updateBeatSyncUI() {
   }
   btnEnableAudioMode?.classList.toggle('hidden', !(reactiveStyle && nativeOk && mode !== 'audio'));
 }
+
+// --- Lyric text: font and colour overrides (scoped to the reel; 'default' / 'theme' follow the theme)
+const LYRIC_FONTS = {
+  default: '',
+  serif: '"Playfair Display", Georgia, serif',
+  modern: '"Inter", -apple-system, system-ui, sans-serif',
+  mono: '"JetBrains Mono", ui-monospace, monospace',
+  bold: '"Anton", Impact, "Arial Black", sans-serif',
+  soft: '"Fraunces", Georgia, serif'
+};
+const LYRIC_COLORS = {
+  theme: '',
+  white: '#ffffff',
+  cyan: '#22d3ee',
+  pink: '#f472b6',
+  gold: '#fbbf24',
+  green: '#4ade80',
+  violet: '#a78bfa'
+};
+
+function markChoice(buttons, attr, value) {
+  buttons.forEach((btn) => {
+    const on = btn.dataset[attr] === value;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-checked', on ? 'true' : 'false');
+  });
+}
+
+function applyLyricFont(id, { persist = true } = {}) {
+  const key = Object.hasOwn(LYRIC_FONTS, id) ? id : 'default';
+  if (persist) safeSet(STORAGE_LYRIC_FONT_KEY, key);
+  if (LYRIC_FONTS[key]) reelContainer.style.setProperty('--reel-font', LYRIC_FONTS[key]);
+  else reelContainer.style.removeProperty('--reel-font');
+  markChoice(lyricFontButtons, 'lyricFont', key);
+}
+
+function applyLyricColor(id, { persist = true } = {}) {
+  const key = Object.hasOwn(LYRIC_COLORS, id) ? id : 'theme';
+  if (persist) safeSet(STORAGE_LYRIC_COLOR_KEY, key);
+  const color = LYRIC_COLORS[key];
+  ['--reel-text-color', '--reel-word-revealed', '--reel-word-unrevealed', '--accent'].forEach((name) => {
+    if (!color) reelContainer.style.removeProperty(name);
+  });
+  if (color) {
+    reelContainer.style.setProperty('--reel-text-color', color);
+    reelContainer.style.setProperty('--reel-word-revealed', color);
+    reelContainer.style.setProperty('--reel-word-unrevealed', `color-mix(in srgb, ${color} 38%, transparent)`);
+    reelContainer.style.setProperty('--accent', color);
+  }
+  markChoice(lyricColorButtons, 'lyricColor', key);
+}
+
+lyricFontButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    haptic('light');
+    applyLyricFont(btn.dataset.lyricFont);
+  });
+});
+lyricColorButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    haptic('light');
+    applyLyricColor(btn.dataset.lyricColor);
+  });
+});
 
 // --- Lyric animation style
 function setAnimStyle(style, { persist = true } = {}) {
@@ -3256,6 +3326,8 @@ function setTranslateLang(lang) {
   requestTranslations(engine.lyricsData);
 }
 
+let lineEnterTimer = 0;
+
 function updateReelLine(lineIndex) {
   const lyrics = engine.lyricsData;
   if (!lyrics || !lyrics.syncedLines) return;
@@ -3290,6 +3362,14 @@ function updateReelLine(lineIndex) {
   setTimeout(() => {
     reelLineBox.classList.remove('line-pulse');
   }, 220);
+  // Smooth line change: the new line (and the faint previous / next lines) ease in instead of snapping.
+  [reelLineText, reelPrevLine, reelNextLine].forEach((el) => el.classList.remove('line-enter'));
+  void reelLineText.offsetWidth;
+  [reelLineText, reelPrevLine, reelNextLine].forEach((el) => el.classList.add('line-enter'));
+  clearTimeout(lineEnterTimer);
+  lineEnterTimer = setTimeout(() => {
+    [reelLineText, reelPrevLine, reelNextLine].forEach((el) => el.classList.remove('line-enter'));
+  }, 420);
 
   const prevConverted = currentTranslations[lineIndex - 1] || lines[lineIndex - 1]?.text || '';
   const nextConverted = currentTranslations[lineIndex + 1] || lines[lineIndex + 1]?.text || '';
@@ -3312,10 +3392,14 @@ function updateReelLine(lineIndex) {
   }
 
   const fragment = document.createDocumentFragment();
-  rawWords.forEach((word) => {
+  // Kinetic style roles (lead / hero / box / accent / plain); only styled under data-anim="kinetic".
+  const roles = kineticRoles(rawWords);
+  rawWords.forEach((word, i) => {
     const span = document.createElement('span');
     span.className = 'reel-word';
     span.textContent = word;
+    span.dataset.k = roles[i];
+    span.style.setProperty('--i', i);
     fragment.appendChild(span);
     reelWordElements.push(span);
     reelWordStates.push(-1);
@@ -4682,6 +4766,7 @@ function scheduleToastDismiss(toast, durationMs) {
  */
 function showAlert(message, type = 'info', options = {}) {
   if (!toastRegion) return;
+  if (type === 'error') type = 'danger'; // card.js / library / playlists report failures as 'error'
   const kind = Object.prototype.hasOwnProperty.call(TOAST_DURATION_MS, type) ? type : 'info';
   const duration = typeof options.duration === 'number' ? options.duration : TOAST_DURATION_MS[kind];
 
@@ -4791,6 +4876,8 @@ async function init() {
   applyFontScale(currentFontScale);
   setWordMode(isWordMode);
   setAnimStyle(currentAnimStyle, { persist: false });
+  applyLyricFont(safeGet(STORAGE_LYRIC_FONT_KEY), { persist: false });
+  applyLyricColor(safeGet(STORAGE_LYRIC_COLOR_KEY), { persist: false });
   updateOffsetUI();
   renderRecentSongs();
 
