@@ -10833,3 +10833,174 @@ a.library-badge--free:focus-visible {
     height: 36px;
   }
 }
+
+/* =====================================================================
+   Kinetic lyric style ("Katana" motion type), kinetic.js sets data-k on each word.
+   Heavy uppercase words slam in as they are sung; the key word takes the theme accent,
+   an emphatic word sits in an accent box, an opening filler floats above in italic script.
+   Dark stage with an accent glow that breathes with the beat, a faint grid and drifting dots.
+   ===================================================================== */
+.reel-container[data-anim="kinetic"] {
+  --kin-accent: var(--accent, #ff2e4d);
+  --kin-ink: #ffffff;
+}
+
+.reel-container[data-anim="kinetic"] .reel-stage {
+  background:
+    radial-gradient(60% 45% at 50% 50%, color-mix(in srgb, var(--kin-accent) calc(16% + 24% * var(--beat, 0)), transparent), transparent 72%),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 44px),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 44px),
+    #07070a;
+}
+
+.reel-container[data-anim="kinetic"] .reel-stage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.55;
+  background-image:
+    radial-gradient(circle, color-mix(in srgb, var(--kin-accent) 85%, transparent) 0 1.5px, transparent 2.5px),
+    radial-gradient(circle, color-mix(in srgb, var(--kin-accent) 55%, transparent) 0 1px, transparent 2px);
+  background-size: 180px 160px, 260px 230px;
+  background-position: 0 0, 60px 90px;
+  animation: kin-drift 24s linear infinite;
+}
+
+@keyframes kin-drift {
+  to { background-position: 180px -160px, -260px 230px; }
+}
+
+.reel-container[data-anim="kinetic"] .reel-line-box {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.reel-container[data-anim="kinetic"] .reel-line-box::before {
+  display: none;
+}
+
+/* line change: a quick burst of accent scan lines */
+.reel-container[data-anim="kinetic"] .reel-line-box.line-pulse {
+  animation: kin-streak 260ms ease-out;
+}
+
+@keyframes kin-streak {
+  from {
+    background: repeating-linear-gradient(0deg, transparent 0 9px, color-mix(in srgb, var(--kin-accent) 40%, transparent) 9px 11px);
+  }
+  to { background: transparent; }
+}
+
+.reel-container[data-anim="kinetic"] .reel-line-text {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: baseline;
+  gap: 0.06em 0.26em;
+  font-family: "Anton", Impact, "Arial Black", "Helvetica Neue", system-ui, sans-serif;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  line-height: 1.04;
+  font-size: calc(clamp(2rem, 4.2vw, 3.8rem) * var(--lyrics-font-scale, 1));
+}
+
+.reel-container[data-anim="kinetic"] .reel-word {
+  margin: 0;
+  color: var(--kin-ink);
+  opacity: 0;
+  transform: translateY(0.25em) scale(1.5);
+  filter: blur(6px);
+  transition: none;
+  text-shadow: 0 0.06em 0 rgba(0, 0, 0, 0.55);
+}
+
+.reel-container[data-anim="kinetic"] .reel-word.current,
+.reel-container[data-anim="kinetic"] .reel-word.revealed {
+  opacity: 1;
+  transform: none;
+  filter: none;
+  animation: kin-slam 320ms cubic-bezier(0.18, 1.35, 0.32, 1) both;
+}
+
+/* the word being sung pumps with the beat (independent of the slam transform) */
+.reel-container[data-anim="kinetic"] .reel-word.current {
+  scale: calc(1 + 0.06 * var(--beat, 0));
+}
+
+@keyframes kin-slam {
+  0% { opacity: 0; transform: translateY(0.25em) scale(1.5); filter: blur(6px); }
+  60% { opacity: 1; transform: translateY(0) scale(0.94); filter: blur(0); }
+  100% { opacity: 1; transform: none; filter: none; }
+}
+
+.reel-container[data-anim="kinetic"] .reel-word[data-k="accent"] {
+  color: var(--kin-accent);
+  text-shadow: 0 0 calc(0.12em + 0.45em * var(--beat, 0)) color-mix(in srgb, var(--kin-accent) 70%, transparent);
+}
+
+.reel-container[data-anim="kinetic"] .reel-word[data-k="hero"] {
+  font-size: 1.6em;
+  color: var(--kin-ink);
+  text-shadow:
+    0.04em 0.04em 0 color-mix(in srgb, var(--kin-accent) 85%, #000),
+    0.08em 0.08em 0 color-mix(in srgb, var(--kin-accent) 55%, #000),
+    0 0 calc(0.2em + 0.5em * var(--beat, 0)) color-mix(in srgb, var(--kin-accent) 60%, transparent);
+}
+
+.reel-container[data-anim="kinetic"] .reel-word[data-k="box"] {
+  padding: 0 0.16em;
+  background: var(--kin-accent);
+  color: var(--accent-contrast, #ffffff);
+  text-shadow: none;
+}
+
+.reel-container[data-anim="kinetic"] .reel-word[data-k="box"].current,
+.reel-container[data-anim="kinetic"] .reel-word[data-k="box"].revealed {
+  animation: kin-box 360ms cubic-bezier(0.2, 1, 0.3, 1) both;
+}
+
+@keyframes kin-box {
+  0% { opacity: 1; clip-path: inset(0 100% 0 0); transform: scale(1.12); filter: none; }
+  100% { opacity: 1; clip-path: inset(0 0 0 0); transform: none; filter: none; }
+}
+
+.reel-container[data-anim="kinetic"] .reel-word[data-k="lead"] {
+  flex-basis: 100%;
+  font-family: "Playfair Display", Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-weight: 500;
+  text-transform: lowercase;
+  font-size: 0.5em;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.88);
+  margin-bottom: -0.1em;
+}
+
+.reel-container[data-anim="kinetic"] .reel-ambient-line {
+  font-family: "Anton", Impact, "Arial Black", system-ui, sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reel-container[data-anim="kinetic"] .reel-stage::after { animation: none; }
+  .reel-container[data-anim="kinetic"] .reel-line-box.line-pulse { animation: none; }
+  .reel-container[data-anim="kinetic"] .reel-word {
+    transform: none;
+    filter: none;
+    opacity: 0.25;
+  }
+  .reel-container[data-anim="kinetic"] .reel-word.current,
+  .reel-container[data-anim="kinetic"] .reel-word.revealed,
+  .reel-container[data-anim="kinetic"] .reel-word[data-k="box"].current,
+  .reel-container[data-anim="kinetic"] .reel-word[data-k="box"].revealed {
+    animation: none;
+    opacity: 1;
+    scale: none;
+  }
+}

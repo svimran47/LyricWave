@@ -30,6 +30,7 @@ import { ReelVisualizer } from './reel.js';
 import { AudioReactive } from './audio-reactive.js';
 import { translateLyrics, defaultTargetLang, TRANSLATE_LANGUAGES, TranslationQuotaError } from './translate.js';
 import { BeatVisuals } from './visuals.js';
+import { kineticRoles } from './kinetic.js';
 import { ProjectMVisualizer, isProjectMSupported } from './projectm-visualizer.js';
 import { LyricCardMaker } from './card.js';
 import { LibraryCollector } from './library.js';
@@ -295,7 +296,7 @@ const MAX_RECENT_SONGS = 10;
 
 /** Every theme the UI offers (order = swatch order). Light themes tell the system bars to use dark icons. */
 const THEME_IDS = ['adaptive', 'aurora', 'vinyl', 'paper', 'neon', 'pixel', 'minimal', 'sunset', 'ocean', 'sakura', 'mono', 'synthwave', 'forest'];
-const ANIM_STYLES = ['pulse', 'reveal', 'karaoke', 'minimal'];
+const ANIM_STYLES = ['pulse', 'reveal', 'karaoke', 'kinetic', 'minimal'];
 const DEFAULT_ANIM_STYLE = 'pulse';
 
 function getDefaultTheme() {
@@ -715,7 +716,8 @@ function applyReelState(state, effectiveMs) {
   const style = currentAnimStyle;
   if (reelContainer.dataset.anim !== style) reelContainer.dataset.anim = style;
 
-  const wordMode = Boolean(state.wordByWordMode) && style !== 'minimal';
+  // Kinetic always plays word by word: each word slams in as it is sung.
+  const wordMode = (Boolean(state.wordByWordMode) || style === 'kinetic') && style !== 'minimal';
   const currentIdx = state.currentWordIndex;
 
   for (let i = 0; i < reelWordElements.length; i++) {
@@ -742,7 +744,7 @@ function applyReelState(state, effectiveMs) {
     }
   }
 
-  const reactive = style === 'pulse' || style === 'karaoke';
+  const reactive = style === 'pulse' || style === 'karaoke' || style === 'kinetic';
   setReelVar('--beat', 'beat', reactive ? Number(state.beat) : 0);
   setReelVar('--vocal', 'vocal', reactive ? Number(state.vocal) : 0);
   setReelVar('--energy', 'energy', reactive ? Number(state.energy) : 0);
@@ -1279,7 +1281,7 @@ btnMiniPlay?.addEventListener('click', (e) => {
 function wantAudioReactive() {
   if (!stageOpen || document.hidden) return false;
   // Fullscreen always runs the beat visuals, whatever the lyric animation style.
-  return currentAnimStyle === 'pulse' || currentAnimStyle === 'karaoke' || isReelFullscreen();
+  return currentAnimStyle === 'pulse' || currentAnimStyle === 'karaoke' || currentAnimStyle === 'kinetic' || isReelFullscreen();
 }
 
 /** Start/stop audio-reactive analysis to match the UI state. Resolves to the resulting mode. */
@@ -1312,7 +1314,7 @@ document.addEventListener('visibilitychange', () => {
 
 function updateBeatSyncUI() {
   const mode = audioReactive.mode;
-  const reactiveStyle = currentAnimStyle === 'pulse' || currentAnimStyle === 'karaoke';
+  const reactiveStyle = currentAnimStyle === 'pulse' || currentAnimStyle === 'karaoke' || currentAnimStyle === 'kinetic';
   const nativeOk = AudioReactive.isNativeAvailable();
   if (beatSyncStatus) {
     beatSyncStatus.textContent = mode === 'audio' ? 'Following the music'
@@ -3310,10 +3312,14 @@ function updateReelLine(lineIndex) {
   }
 
   const fragment = document.createDocumentFragment();
-  rawWords.forEach((word) => {
+  // Kinetic style roles (lead / hero / box / accent / plain); only styled under data-anim="kinetic".
+  const roles = kineticRoles(rawWords);
+  rawWords.forEach((word, i) => {
     const span = document.createElement('span');
     span.className = 'reel-word';
     span.textContent = word;
+    span.dataset.k = roles[i];
+    span.style.setProperty('--i', i);
     fragment.appendChild(span);
     reelWordElements.push(span);
     reelWordStates.push(-1);

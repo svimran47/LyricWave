@@ -113,7 +113,8 @@ def webAppFiles = [
     'app.js', 'audio-reactive.js', 'auth.js', 'config.js', 'engine.js', 'lastfm.js', 'lyrics.js',
     'mic.js', 'phone-source.js', 'projectm-visualizer.js', 'reel.js', 'search.js', 'shazam-core.js',
     'spotify-source.js', 'translate.js', 'types.js', 'user-auth.js', 'visuals.js', 'card.js',
-    'db.js', 'musicbrainz.js', 'library.js', 'library-view.js', 'openverse.js', 'user-lyrics.js', 'queue.js', 'playlists.js', 'backup.js'
+    'db.js', 'musicbrainz.js', 'library.js', 'library-view.js', 'openverse.js', 'user-lyrics.js', 'queue.js', 'playlists.js', 'backup.js',
+    'kinetic.js'
 ]
 
 task copyWebAssets(type: Sync) {

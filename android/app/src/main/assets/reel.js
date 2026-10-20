@@ -6,10 +6,11 @@
  * word-by-word reveal timing,
  * multi-theme rendering (Pixel OLED, Neon, Vinyl, Paper + token-based themes),
  * and (Sprint 2) animation styles driven by an AudioReactive source:
- *   'pulse' (beat/vocal synced, default) | 'reveal' (word-by-word) | 'karaoke' (smooth fill) | 'minimal' (static).
+ *   'pulse' (beat/vocal synced, default) | 'reveal' (word-by-word) | 'karaoke' (smooth fill) |
+ *   'kinetic' (bold motion type, word by word) | 'minimal' (static).
  */
 
-const ANIMATION_STYLES = ['pulse', 'reveal', 'karaoke', 'minimal'];
+const ANIMATION_STYLES = ['pulse', 'reveal', 'karaoke', 'kinetic', 'minimal'];
 const STATIC_REDRAW_MS = 500; // static styles only repaint this often (follows theme / adaptive palette changes)
 
 export class ReelVisualizer {
@@ -256,7 +257,7 @@ export class ReelVisualizer {
     // Compute word-by-word reveal index (karaoke always needs word tracking)
     let wordIndex = -1;
     let wordProgress = 0;
-    const trackWords = this.wordByWordMode || style === 'karaoke';
+    const trackWords = this.wordByWordMode || style === 'karaoke' || style === 'kinetic';
     if (trackWords && this.activeWords.length > 0) {
       for (let i = 0; i < this.activeWords.length; i++) {
         if (positionMs >= this.activeWords[i].startMs) {
