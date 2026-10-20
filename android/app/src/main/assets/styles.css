@@ -2680,9 +2680,11 @@ body::before {
   background: var(--accent);
   box-shadow: 0 0 8px var(--spotify-green-glow);
   border-radius: var(--radius-full);
-  width: 0%;
-  will-change: width;
-  transition: width 80ms linear;
+  width: 100%;
+  transform: scaleX(0);
+  transform-origin: left center;
+  will-change: transform;
+  transition: transform 80ms linear;
 }
 
 .progress-bar-fill.paused {
@@ -11003,4 +11005,253 @@ a.library-badge--free:focus-visible {
     opacity: 1;
     scale: none;
   }
+}
+
+/* ---------------------------------------------------------------------------------------------
+   More lyric animation styles: typewriter, blur (focus pull), wave, neon, flip.
+   All five play word by word and move only transform / opacity / filter / clip-path.
+   --------------------------------------------------------------------------------------------- */
+
+/* typewriter: each word is typed out left to right over the time it is sung, with a caret */
+.reel-container[data-anim="typewriter"] .reel-word {
+  opacity: 0;
+  transition: none;
+  transform: none;
+  text-shadow: none;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  color: var(--reel-word-revealed);
+}
+
+.reel-container[data-anim="typewriter"] .reel-word.revealed {
+  opacity: 1;
+}
+
+.reel-container[data-anim="typewriter"] .reel-word.current {
+  opacity: 1;
+  clip-path: inset(0 calc(100% - var(--word-progress, 0) * 100%) 0 0);
+  box-shadow: 0.08em 0 0 -0.02em var(--accent);
+}
+
+/* blur: unsung words sit out of focus and dim; each one pulls sharp as it is sung */
+.reel-container[data-anim="blur"] .reel-word {
+  opacity: 0.28;
+  filter: blur(7px);
+  transform: scale(0.96);
+  transition: opacity 260ms ease-out, filter 260ms ease-out, transform 260ms ease-out;
+  text-shadow: none;
+}
+
+.reel-container[data-anim="blur"] .reel-word.current {
+  opacity: 1;
+  filter: blur(0);
+  transform: scale(1.06);
+  color: var(--reel-word-revealed);
+}
+
+.reel-container[data-anim="blur"] .reel-word.revealed {
+  opacity: 0.85;
+  filter: blur(0);
+  transform: none;
+}
+
+/* wave: sung words float up and down in a travelling wave; the word being sung lifts in the accent */
+.reel-container[data-anim="wave"] .reel-word {
+  opacity: 0.3;
+  transition: opacity 240ms ease-out, color 240ms ease-out;
+  text-shadow: none;
+}
+
+.reel-container[data-anim="wave"] .reel-word.current,
+.reel-container[data-anim="wave"] .reel-word.revealed {
+  opacity: 1;
+  color: var(--reel-word-revealed);
+  animation: lw-wave 2.2s ease-in-out infinite;
+  animation-delay: calc(var(--i, 0) * -180ms);
+}
+
+.reel-container[data-anim="wave"] .reel-word.current {
+  color: var(--accent);
+}
+
+@keyframes lw-wave {
+  0%, 100% { transform: translateY(0.06em); }
+  50% { transform: translateY(-0.12em); }
+}
+
+/* neon: unsung words are dark tubes; each lights up with a flicker and glows with the beat */
+.reel-container[data-anim="neon"] .reel-word {
+  opacity: 0.32;
+  transition: opacity 180ms ease-out;
+  text-shadow: none;
+  transform: none;
+}
+
+.reel-container[data-anim="neon"] .reel-word.current,
+.reel-container[data-anim="neon"] .reel-word.revealed {
+  opacity: 1;
+  color: var(--reel-word-revealed);
+  text-shadow:
+    0 0 0.08em var(--reel-word-revealed),
+    0 0 calc(0.22em + 0.3em * var(--beat, 0)) var(--accent),
+    0 0 calc(0.5em + 0.5em * var(--beat, 0)) var(--accent);
+}
+
+.reel-container[data-anim="neon"] .reel-word.current {
+  animation: lw-neon-on 420ms steps(1, end) both;
+}
+
+@keyframes lw-neon-on {
+  0% { opacity: 0.32; }
+  15% { opacity: 1; }
+  30% { opacity: 0.4; }
+  50% { opacity: 1; }
+  65% { opacity: 0.6; }
+  100% { opacity: 1; }
+}
+
+/* flip: each word flips up into place in 3D as it is sung */
+.reel-container[data-anim="flip"] .reel-line-text {
+  perspective: 700px;
+}
+
+.reel-container[data-anim="flip"] .reel-word {
+  opacity: 0;
+  transform: rotateX(-90deg);
+  transform-origin: 50% 100%;
+  transition: none;
+  text-shadow: none;
+  color: var(--reel-word-revealed);
+}
+
+.reel-container[data-anim="flip"] .reel-word.current,
+.reel-container[data-anim="flip"] .reel-word.revealed {
+  opacity: 1;
+  transform: none;
+}
+
+.reel-container[data-anim="flip"] .reel-word.current {
+  animation: lw-flip-in 380ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+  color: var(--accent);
+}
+
+@keyframes lw-flip-in {
+  0% { opacity: 0; transform: rotateX(-90deg); }
+  100% { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reel-container[data-anim="typewriter"] .reel-word.current { clip-path: none; }
+  .reel-container[data-anim="blur"] .reel-word { filter: none; transition: none; transform: none; }
+  .reel-container[data-anim="wave"] .reel-word.current,
+  .reel-container[data-anim="wave"] .reel-word.revealed,
+  .reel-container[data-anim="neon"] .reel-word.current,
+  .reel-container[data-anim="flip"] .reel-word.current { animation: none; }
+  .reel-container[data-anim="flip"] .reel-word { transform: none; }
+}
+
+/* Lyric text picker: font cards and colour swatches (shown in the stage sheet) */
+.lyric-font-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.lyric-font-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 56px;
+  padding: var(--space-3);
+  background: var(--fill-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  text-align: left;
+  cursor: pointer;
+}
+
+.lyric-font-name {
+  color: var(--text);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.lyric-font-desc {
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+}
+
+.lyric-font-btn.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.lyric-color-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.lyric-color-btn {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--swatch, var(--fill-2));
+  color: #000;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.lyric-color-btn.active {
+  border-color: var(--text);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* selected is also marked with a check, never by colour alone */
+.lyric-color-btn.active:not(:has(.lyric-color-auto))::after {
+  content: "✓";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: var(--fs-md);
+  font-weight: 800;
+  color: #000;
+}
+
+.lyric-color-auto {
+  color: var(--text);
+}
+
+/* Smooth line change: the new line eases up and in (styles with their own word entrances skip it) */
+.reel-container:not([data-anim="kinetic"]):not([data-anim="typewriter"]):not([data-anim="flip"]) .reel-line-text.line-enter {
+  animation: lw-line-in 380ms cubic-bezier(0.2, 0.8, 0.25, 1) both;
+}
+
+.reel-ambient-line.line-enter {
+  animation: lw-ambient-in 420ms ease-out both;
+}
+
+@keyframes lw-line-in {
+  from { opacity: 0; transform: translateY(0.45em); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes lw-ambient-in {
+  from { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reel-line-text.line-enter,
+  .reel-ambient-line.line-enter { animation: none !important; }
 }

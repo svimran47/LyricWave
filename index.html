@@ -890,6 +890,26 @@
               <span class="anim-style-name">Kinetic</span>
               <span class="anim-style-desc">Bold motion type</span>
             </button>
+            <button type="button" role="radio" aria-checked="false" class="anim-style-btn" data-anim-style="typewriter">
+              <span class="anim-style-name">Typewriter</span>
+              <span class="anim-style-desc">Typed out live</span>
+            </button>
+            <button type="button" role="radio" aria-checked="false" class="anim-style-btn" data-anim-style="blur">
+              <span class="anim-style-name">Focus</span>
+              <span class="anim-style-desc">Blur pulls sharp</span>
+            </button>
+            <button type="button" role="radio" aria-checked="false" class="anim-style-btn" data-anim-style="wave">
+              <span class="anim-style-name">Wave</span>
+              <span class="anim-style-desc">Words float</span>
+            </button>
+            <button type="button" role="radio" aria-checked="false" class="anim-style-btn" data-anim-style="neon">
+              <span class="anim-style-name">Neon</span>
+              <span class="anim-style-desc">Glowing sign</span>
+            </button>
+            <button type="button" role="radio" aria-checked="false" class="anim-style-btn" data-anim-style="flip">
+              <span class="anim-style-name">Flip</span>
+              <span class="anim-style-desc">3D flip in</span>
+            </button>
             <button type="button" role="radio" aria-checked="false" class="anim-style-btn" data-anim-style="minimal">
               <span class="anim-style-name">Minimal</span>
               <span class="anim-style-desc">Static highlight</span>
@@ -907,6 +927,45 @@
             <span class="sheet-row-label">Enable audio mode</span>
             <span class="sheet-row-hint">Listens to the music playing on this phone. Nothing is recorded or stored.</span>
           </button>
+        </section>
+
+        <section class="sheet-section" aria-labelledby="sheetTextTitle">
+          <h3 id="sheetTextTitle" class="sheet-section-title">Lyric text</h3>
+          <div class="lyric-font-options" role="radiogroup" aria-label="Lyric font">
+            <button type="button" role="radio" aria-checked="true" class="lyric-font-btn active" data-lyric-font="default" style="font-family:inherit">
+              <span class="lyric-font-name">Theme</span>
+              <span class="lyric-font-desc">Default</span>
+            </button>
+            <button type="button" role="radio" aria-checked="false" class="lyric-font-btn" data-lyric-font="serif" style="font-family:"Playfair Display", Georgia, serif">
+              <span class="lyric-font-name">Serif</span>
+              <span class="lyric-font-desc">Elegant</span>
+            </button>
+            <button type="button" role="radio" aria-checked="false" class="lyric-font-btn" data-lyric-font="modern" style="font-family:"Inter", system-ui, sans-serif">
+              <span class="lyric-font-name">Modern</span>
+              <span class="lyric-font-desc">Clean</span>
+            </button>
+            <button type="button" role="radio" aria-checked="false" class="lyric-font-btn" data-lyric-font="mono" style="font-family:"JetBrains Mono", ui-monospace, monospace">
+              <span class="lyric-font-name">Mono</span>
+              <span class="lyric-font-desc">Typewriter</span>
+            </button>
+            <button type="button" role="radio" aria-checked="false" class="lyric-font-btn" data-lyric-font="bold" style="font-family:"Anton", Impact, sans-serif">
+              <span class="lyric-font-name">Bold</span>
+              <span class="lyric-font-desc">Poster</span>
+            </button>
+            <button type="button" role="radio" aria-checked="false" class="lyric-font-btn" data-lyric-font="soft" style="font-family:"Fraunces", Georgia, serif">
+              <span class="lyric-font-name">Soft</span>
+              <span class="lyric-font-desc">Warm</span>
+            </button>
+          </div>
+          <div class="lyric-color-options" role="radiogroup" aria-label="Lyric color">
+            <button type="button" role="radio" aria-checked="true" aria-label="Theme" title="Theme" class="lyric-color-btn active" data-lyric-color="theme"><span class="lyric-color-auto">Auto</span></button>
+            <button type="button" role="radio" aria-checked="false" aria-label="White" title="White" class="lyric-color-btn" data-lyric-color="white" style="--swatch:#ffffff"></button>
+            <button type="button" role="radio" aria-checked="false" aria-label="Cyan" title="Cyan" class="lyric-color-btn" data-lyric-color="cyan" style="--swatch:#22d3ee"></button>
+            <button type="button" role="radio" aria-checked="false" aria-label="Pink" title="Pink" class="lyric-color-btn" data-lyric-color="pink" style="--swatch:#f472b6"></button>
+            <button type="button" role="radio" aria-checked="false" aria-label="Gold" title="Gold" class="lyric-color-btn" data-lyric-color="gold" style="--swatch:#fbbf24"></button>
+            <button type="button" role="radio" aria-checked="false" aria-label="Green" title="Green" class="lyric-color-btn" data-lyric-color="green" style="--swatch:#4ade80"></button>
+            <button type="button" role="radio" aria-checked="false" aria-label="Violet" title="Violet" class="lyric-color-btn" data-lyric-color="violet" style="--swatch:#a78bfa"></button>
+          </div>
         </section>
 
         <section class="sheet-section" aria-labelledby="sheetDisplayTitle">

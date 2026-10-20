@@ -60,7 +60,7 @@ const gradle = readFileSync('android/app/build.gradle', 'utf8');
 assert(/import \{ kineticRoles \} from '\.\/kinetic\.js'/.test(app), 'app.js imports kinetic.js');
 assert(/const ANIM_STYLES = \[[^\]]*'kinetic'/.test(app), 'kinetic is a selectable lyric animation');
 assert(/span\.dataset\.k = roles\[i\]/.test(app), 'each reel word gets its kinetic role');
-assert(/const ANIMATION_STYLES = \[[^\]]*'kinetic'/.test(reel) && /style === 'kinetic'/.test(reel), 'reel tracks words for kinetic');
+assert(/const ANIMATION_STYLES = \[[^\]]*'kinetic'/.test(reel) && /WORD_STYLES\.has\(style\)/.test(reel), 'reel tracks words for kinetic');
 assert(/data-anim-style="kinetic"/.test(html), 'Kinetic button in the Lyric animation menu');
 assert(/\.reel-container\[data-anim="kinetic"\] \.reel-word\[data-k="accent"\]/.test(css), 'kinetic accent styles exist');
 assert(/prefers-reduced-motion: reduce\)[\s\S]*data-anim="kinetic"/.test(css), 'kinetic respects reduced motion');
