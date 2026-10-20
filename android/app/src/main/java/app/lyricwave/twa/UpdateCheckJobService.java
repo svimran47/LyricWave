@@ -41,7 +41,11 @@ public class UpdateCheckJobService extends JobService {
                 .setPersisted(true)
                 .setPeriodic(INTERVAL_MS)
                 .build();
-        scheduler.schedule(job);
+        try {
+            scheduler.schedule(job);
+        } catch (RuntimeException e) {
+            // Background checks are optional: the app must still open if scheduling is refused.
+        }
     }
 
     @Override

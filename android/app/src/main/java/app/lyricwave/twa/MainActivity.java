@@ -159,8 +159,12 @@ public class MainActivity extends AppCompatActivity {
         // Serve the app from the newest verified web update, falling back to the APK's assets.
         // Same origin either way, so localStorage and the native bridge checks are unchanged.
         webUpdater = WebUpdater.get(this);
-        UpdateCheckJobService.schedule(this);
-        askNotificationPermissionOnce();
+        try {
+            UpdateCheckJobService.schedule(this);
+            askNotificationPermissionOnce();
+        } catch (RuntimeException ignored) {
+            // Update notifications are optional; never block the app from opening.
+        }
         final WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
                 .setDomain(APP_HOST)
                 .addPathHandler("/assets/", webUpdater.pathHandler())

@@ -29,6 +29,7 @@ assert(Boolean(repo) && updater.includes(`github.com/${repo}/releases/download/`
 assert(updater.includes('"web-latest"') && updater.includes('"web-test"') && publish.includes("test: 'web-test'"), 'stable and test channels use matching release tags');
 assert(pkg.scripts['publish:web'] && pkg.scripts['publish:web:test'], 'npm run publish:web and publish:web:test exist');
 assert(gitignore.includes('web-update-private.pem'), 'the signing key is gitignored');
+assert(/ACCESS_NETWORK_STATE/.test(manifest), 'manifest declares network state (the job needs it, or the app crashes on launch)');
 assert(/POST_NOTIFICATIONS/.test(manifest) && /RECEIVE_BOOT_COMPLETED/.test(manifest), 'manifest allows notifications and boot-time scheduling');
 assert(/UpdateCheckJobService[\s\S]*BIND_JOB_SERVICE/.test(manifest), 'background update job is declared');
 assert(job.includes('EXTRA_APPLY_WEB_UPDATE') && main.includes('EXTRA_APPLY_WEB_UPDATE') && main.includes('applyUpdateFromNotification'), 'tapping the notification applies the update');
