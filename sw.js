@@ -19,6 +19,8 @@ const STATIC_ASSETS = [
   './audio-reactive.js',
   './visuals.js',
   './kinetic.js',
+  './liquid-glass.js',
+  './liquid-glass-textures.js',
   './card.js',
   './db.js',
   './musicbrainz.js',

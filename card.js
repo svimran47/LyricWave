@@ -71,6 +71,11 @@ export const CARD_STYLES = {
     art: true, bg: ['#1a1024', '#0b0712'], text: '#0b0b0f', bar: '#ffffff',
     meta: '#ffffff', metaMuted: 'rgba(255,255,255,0.72)', accent: '#ffffff'
   },
+  glass: {
+    label: 'Glass', desc: 'Liquid glass on blurred cover',
+    art: true, bg: ['#0f1424', '#070a14'], text: '#ffffff', glass: true,
+    meta: '#ffffff', metaMuted: 'rgba(255,255,255,0.78)', accent: '#60a5fa'
+  },
   aurora: {
     label: 'Aurora', desc: 'LyricWave purple glow',
     art: false, bg: ['#1b1033', '#0b1430'], glow: ['rgba(172,88,233,0.55)', 'rgba(99,102,241,0.45)'],
@@ -428,14 +433,14 @@ export function renderLyricCard(ctx, opts) {
   const quoteH = quoteSize * 0.62;
   const lyricTop = pad + quoteH;
   const lyricBottom = footerY - (isStory ? 120 : 64);
-  const barPadX = style.bar ? 22 : 0;
+  const barPadX = style.bar ? 22 : (style.glass ? 20 : 0);
   const box = {
     maxWidth: w - pad * 2 - barPadX * 2,
     maxHeight: lyricBottom - lyricTop,
     maxSize: isStory ? 96 : 84,
     minSize: 36,
-    lineHeight: style.bar ? 1.38 : 1.2,
-    gap: style.bar ? 0.18 : 0.35
+    lineHeight: (style.bar || style.glass) ? 1.38 : 1.2,
+    gap: (style.bar || style.glass) ? 0.18 : 0.35
   };
   const texts = clampQuote(opts.lines, opts.limits || DEFAULT_QUOTE_LIMITS);
   const layout = fitLyricLayout(texts.length ? texts : [' '], box, measurerFor(ctx, 800));
@@ -460,6 +465,38 @@ export function renderLyricCard(ctx, opts) {
         const tw = ctx.measureText(row).width;
         ctx.fillStyle = style.bar;
         ctx.fillRect(pad, y + rowH * 0.06, tw + barPadX * 2, rowH * 0.88);
+        ctx.fillStyle = style.text;
+        ctx.fillText(row, pad + barPadX, mid);
+      } else if (style.glass) {
+        const tw = ctx.measureText(row).width;
+        const pillW = tw + barPadX * 2;
+        const pillH = rowH * 0.9;
+        const pillX = pad;
+        const pillY = y + rowH * 0.05;
+        const r = Math.min(18, pillH / 2);
+
+        ctx.save();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.16)';
+        if (typeof ctx.fill === 'function') {
+          roundRectPath(ctx, pillX, pillY, pillW, pillH, r);
+          ctx.fill();
+        } else {
+          ctx.fillRect(pillX, pillY, pillW, pillH);
+        }
+
+        // Specular rim reflection
+        if (typeof ctx.stroke === 'function') {
+          const borderGrad = ctx.createLinearGradient(pillX, pillY, pillX + pillW, pillY + pillH);
+          borderGrad.addColorStop(0, 'rgba(255, 255, 255, 0.7)');
+          borderGrad.addColorStop(0.4, 'rgba(255, 255, 255, 0.15)');
+          borderGrad.addColorStop(1, 'rgba(255, 255, 255, 0.45)');
+          ctx.strokeStyle = borderGrad;
+          ctx.lineWidth = 1.5;
+          roundRectPath(ctx, pillX, pillY, pillW, pillH, r);
+          ctx.stroke();
+        }
+        ctx.restore();
+
         ctx.fillStyle = style.text;
         ctx.fillText(row, pad + barPadX, mid);
       } else if (style.glowText) {

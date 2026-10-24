@@ -38,6 +38,7 @@ import { MusicBrainzClient } from './musicbrainz.js';
 import { LibraryView, rowArtUrl } from './library-view.js';
 import { OpenverseClient, playableOpenTrack } from './openverse.js';
 import { setUserLyricsProvider } from './lyrics.js';
+import { attachLiquidGlass, initLiquidGlassFilter } from './liquid-glass.js';
 import { UserLyricsStore, UserLyricsDialog } from './user-lyrics.js';
 import { PlayQueue, RESTART_THRESHOLD_SEC } from './queue.js';
 import { PlaylistStore, PlaylistsView, PlaylistPicker } from './playlists.js';
@@ -299,7 +300,7 @@ const STORAGE_HAPTICS_KEY = 'lyricwave_haptics';
 const MAX_RECENT_SONGS = 10;
 
 /** Every theme the UI offers (order = swatch order). Light themes tell the system bars to use dark icons. */
-const THEME_IDS = ['adaptive', 'aurora', 'vinyl', 'paper', 'neon', 'pixel', 'minimal', 'sunset', 'ocean', 'sakura', 'mono', 'synthwave', 'forest'];
+const THEME_IDS = ['adaptive', 'aurora', 'vinyl', 'paper', 'neon', 'pixel', 'minimal', 'sunset', 'ocean', 'sakura', 'mono', 'synthwave', 'forest', 'glass'];
 const ANIM_STYLES = ['pulse', 'reveal', 'karaoke', 'kinetic', 'typewriter', 'blur', 'wave', 'neon', 'flip', 'minimal'];
 /** Styles that follow the beat (CSS --beat / --vocal / --energy); the rest ignore the audio analysis. */
 const REACTIVE_STYLES = new Set(['pulse', 'karaoke', 'kinetic', 'neon']);
@@ -3602,6 +3603,14 @@ function applyTheme(themeName) {
   document.documentElement.setAttribute('data-theme', themeName);
   safeSet(STORAGE_THEME_KEY, themeName);
   reel.setTheme(themeName);
+
+  if (themeName === 'glass') {
+    initLiquidGlassFilter();
+    if (reelLineBox && !reelLineBox._lwGlassAttached) {
+      reelLineBox._lwGlassAttached = true;
+      attachLiquidGlass(reelLineBox, { elasticity: 0.1 });
+    }
+  }
 
   // Clear or apply adaptive properties
   if (themeName !== 'adaptive') {

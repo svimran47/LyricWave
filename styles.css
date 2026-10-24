@@ -662,6 +662,40 @@
   --stage-bg: radial-gradient(130% 60% at 50% -8%, rgba(34, 197, 94, 0.26), rgba(163, 230, 53, 0.09) 55%, transparent 80%), radial-gradient(90% 40% at 50% 112%, rgba(111, 220, 152, 0.07), transparent 70%), var(--bg);
 }
 
+/* 14. Glass: Apple VisionOS-inspired frosted liquid glass with optical edge refraction & specular rim lighting */
+[data-theme="glass"] {
+  --bg: #0b1536;
+  --bg-elevated: rgba(255, 255, 255, 0.12);
+  --surface: rgba(255, 255, 255, 0.14);
+  --border: rgba(255, 255, 255, 0.22);
+  --border-highlight: rgba(255, 255, 255, 0.65);
+  --text: #ffffff;
+  --text-muted: rgba(255, 255, 255, 0.82);
+  --accent: #38bdf8;
+  --accent-contrast: #030712;
+  --lyric-active: #ffffff;
+  --lyric-dim: rgba(255, 255, 255, 0.55);
+  --wave-1: #38bdf8;
+  --wave-2: #c084fc;
+  --radius: 20px;
+  --font-ui: -apple-system, BlinkMacSystemFont, 'Switzer', 'SF Pro Display', sans-serif;
+  --font-lyrics: -apple-system, BlinkMacSystemFont, 'Switzer', 'SF Pro Display', sans-serif;
+  --spotify-green-glow: rgba(56, 189, 248, 0.5);
+  --reel-font: var(--font-lyrics);
+  --reel-stage-bg: transparent;
+  --reel-box-border: none;
+  --reel-box-bg: rgba(255, 255, 255, 0.15);
+  --reel-box-radius: 24px;
+  --reel-box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35), 0 0 36px rgba(56, 189, 248, 0.45);
+  --reel-text-color: #ffffff;
+  --reel-word-unrevealed: rgba(255, 255, 255, 0.55);
+  --reel-word-revealed: #ffffff;
+  --reel-word-glow: 0 0 20px rgba(56, 189, 248, 0.85);
+  --reel-bg-gradient: radial-gradient(ellipse 90% 65% at 50% 0%, rgba(56, 189, 248, 0.45), rgba(192, 132, 252, 0.25) 60%, transparent 80%);
+  --stage-bg: radial-gradient(ellipse 140% 80% at 50% -15%, rgba(56, 189, 248, 0.65), rgba(14, 165, 233, 0.35) 45%, transparent 80%), radial-gradient(ellipse 110% 75% at 95% 85%, rgba(192, 132, 252, 0.55), rgba(99, 102, 241, 0.30) 50%, transparent 80%), radial-gradient(circle at 10% 55%, rgba(56, 189, 248, 0.40), transparent 60%), radial-gradient(circle at 50% 115%, rgba(147, 51, 234, 0.45), transparent 70%), linear-gradient(180deg, #0b1536 0%, #171c42 50%, #0d122e 100%);
+}
+
+
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -8925,6 +8959,7 @@ body.stage-open .mini-player {
 .theme-swatch-card[data-theme-card="mono"] { --sw-bg: #000000; --sw-accent: #f5f5f5; --sw-text: #ffffff; --sw-border: rgba(255, 255, 255, 0.45); --sw-w1: #ffffff; --sw-w2: #737373; }
 .theme-swatch-card[data-theme-card="synthwave"] { --sw-bg: linear-gradient(135deg, #0d0221, #2a0a55); --sw-accent: #ff5fd2; --sw-text: #fff2fd; --sw-border: rgba(255, 95, 210, 0.6); --sw-w1: #ff2e97; --sw-w2: #22e5ff; }
 .theme-swatch-card[data-theme-card="forest"] { --sw-bg: linear-gradient(135deg, #07130d, #123826); --sw-accent: #6fdc98; --sw-text: #f3fff6; --sw-border: rgba(111, 220, 152, 0.45); --sw-w1: #22c55e; --sw-w2: #a3e635; }
+.theme-swatch-card[data-theme-card="glass"] { --sw-bg: radial-gradient(circle at 30% 20%, rgba(56, 189, 248, 0.8), transparent 60%), radial-gradient(circle at 80% 80%, rgba(192, 132, 252, 0.7), transparent 60%), #171c42; --sw-accent: #38bdf8; --sw-text: #ffffff; --sw-border: rgba(56, 189, 248, 0.75); --sw-w1: #38bdf8; --sw-w2: #c084fc; }
 
 /* Lyric animation style: 2 x 2 option cards (name + one-line description) */
 .anim-style-options {
@@ -11254,4 +11289,89 @@ a.library-badge--free:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .reel-line-text.line-enter,
   .reel-ambient-line.line-enter { animation: none !important; }
+}
+
+
+/* Liquid Glass Active Line Box & Surfaces */
+[data-theme="glass"] .reel-line-box {
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  transform: translate(var(--glass-elastic-x, 0px), var(--glass-elastic-y, 0px));
+  transition: transform 120ms ease-out, opacity 240ms ease-out;
+}
+
+[data-theme="glass"] .reel-line-box::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  filter: url(#lw-glass-filter);
+  z-index: 0;
+}
+
+[data-theme="glass"] .reel-line-box::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 1.5px;
+  border-radius: inherit;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  background: linear-gradient(
+    var(--glass-glare-angle, 135deg),
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, var(--glass-glare-intensity, 0.35)) 50%,
+    rgba(255, 255, 255, 0.05) 100%
+  );
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.35),
+              inset 0 1px 3px rgba(255, 255, 255, 0.25);
+  z-index: 2;
+}
+
+[data-theme="glass"] .reel-line-text,
+[data-theme="glass"] .reel-line-translation {
+  position: relative;
+  z-index: 1;
+}
+
+.liquid-glass-surface {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--reel-box-bg, rgba(15, 20, 35, 0.5));
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border-radius: var(--radius, 16px);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+}
+
+.liquid-glass-surface::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 1.5px;
+  border-radius: inherit;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  background: linear-gradient(
+    var(--glass-glare-angle, 135deg),
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, var(--glass-glare-intensity, 0.35)) 50%,
+    rgba(255, 255, 255, 0.05) 100%
+  );
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-theme="glass"] .reel-line-box {
+    transform: none !important;
+  }
 }
